@@ -52,11 +52,26 @@ First public release.
 - First run welcome dialog opened with a broken layout and could abort the app; the loop counter
   label, the indeterminate progress shimmer and the animation helpers are also hardened against
   widgets that are torn down mid-animation.
+- Animated fade helpers used to install a fresh opacity effect on every call, which deleted the
+  effect the running animation was still using and aborted the process (mainly on Windows, but also
+  in headless runs).  Each widget now keeps at most one running animation, effects are reused and
+  removed one event-loop turn after the fade ends.
+- Closing the window (or quitting during a run) left worker threads running; `MainWindow.shutdown()`
+  now stops the scheduler, shuts every page down and joins the threads, and the browser probe is
+  started lazily when Settings is opened and joined when it closes.
+- Browser detection results are memoised, so building a window no longer scans the registry and
+  `PATH` for every browser.
 - `CLICKS_AUTO_BROWSER_ARGS` lets you append extra Chromium flags on unusual hosts.
 
 **Packaging & tests**
 - PyInstaller portable build (`Clicks-Auto.exe` + `clicks-auto-cli.exe`), SHA256 checksums,
   generated icons, PowerShell build script and a GitHub Actions pipeline that tests on Linux and
   Windows and publishes the release ZIP.
+- `scripts/dev_headless_qt.sh` runs the whole suite inside a bare container (stubs for
+  libGL/libEGL/libxkbcommon/libdbus plus the offscreen Qt platform).
+- Failing CI runs post the tail of each test log and the failing JUnit cases to a tracking issue
+  (`packaging/ci_report.py`), so a failure is readable without the raw job log.
+- `--self-test` now closes open windows, joins the workers and arms a 15 second watchdog, and the
+  workflow kills a stuck self test after five minutes instead of hanging the runner.
 - pytest suite with unit tests, GUI smoke tests and real browser record → replay integration tests
   against a bundled local test site.

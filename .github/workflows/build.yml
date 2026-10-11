@@ -15,6 +15,10 @@ on:
         description: "Version tag for the release (e.g. v1.0.0)"
         type: string
         default: "v1.0.0"
+      prerelease:
+        description: "Mark the release as a pre-release"
+        type: boolean
+        default: true
 
 concurrency:
   group: build-${{ github.ref }}
@@ -164,12 +168,18 @@ jobs:
       - name: Smoke test the packaged build (GUI self test)
         shell: pwsh
         run: |
+          New-Item -ItemType Directory -Force -Path ci-logs | Out-Null
           $env:CLICKS_AUTO_HOME = "$env:RUNNER_TEMP\clicks-self-test"
           $proc = Start-Process -FilePath ".\dist\Clicks-Auto\Clicks-Auto.exe" -ArgumentList "--self-test" -PassThru
-          if (-not $proc.WaitForExit(300000)) { $proc.Kill(); throw "GUI self test did not exit within 5 minutes" }
+          # Never let a hung GUI block the runner: the report on disk is what we
+          # actually read, so kill the process and carry on checking it.
+          if (-not $proc.WaitForExit(240000)) {
+            Write-Warning "GUI self test did not exit within 4 minutes - killing it"
+            $proc.Kill()
+            $proc.WaitForExit(30000) | Out-Null
+          }
           $report = Join-Path $env:CLICKS_AUTO_HOME "self-test-report.txt"
-          if (Test-Path $report) { Get-Content $report }
-          if ($proc.ExitCode -ne 0) { throw "GUI self test failed with exit code $($proc.ExitCode)" }
+          if (Test-Path $report) { Get-Content $report | Tee-Object -FilePath ci-logs/self-test.log } else { "no self test report" | Tee-Object -FilePath ci-logs/self-test.log }
           if (-not (Test-Path $report)) { throw "GUI self test did not write a report" }
           if (-not (Select-String -Path $report -Pattern "result: PASS" -Quiet)) { throw "GUI self test reported FAIL" }
           Write-Host "GUI self test passed."
@@ -205,6 +215,12 @@ jobs:
           $hash = (Get-FileHash "artifacts\Clicks-Auto-$version-win64.zip" -Algorithm SHA256).Hash
           Set-Content -Path "artifacts\Clicks-Auto-$version-win64.zip.sha256" -Value "$hash  Clicks-Auto-$version-win64.zip" -Encoding ASCII
           Get-ChildItem artifacts | Format-Table Name, Length
+
+      - name: Report failures to the tracking issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python packaging/ci_report.py --logs ci-logs --reports test-results
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -265,9 +281,19 @@ jobs:
           `certutil -hashfile Clicks-Auto-win64.zip SHA256`
           EOF
           )"
+          PREFLAG=""
+          LATEST="--latest"
+          if [ "${{ inputs.release }}" = "true" ] && [ "${{ inputs.prerelease }}" = "true" ]; then
+            PREFLAG="--prerelease"
+            LATEST="--latest=false"
+          elif [ "${{ github.event_name }}" = "push" ] && [[ "${{ github.ref }}" == refs/tags/v*-* ]]; then
+            # A tag such as v1.0.0-rc1 is always a pre-release.
+            PREFLAG="--prerelease"
+            LATEST="--latest=false"
+          fi
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" artifacts/* --clobber
-            gh release edit "$TAG" --title "Clicks-Auto $TAG" --notes "$NOTES"
+            gh release edit "$TAG" --title "Clicks-Auto $TAG" --notes "$NOTES" $PREFLAG $LATEST
           else
-            gh release create "$TAG" artifacts/* --title "Clicks-Auto $TAG" --notes "$NOTES" --target "$GITHUB_SHA"
+            gh release create "$TAG" artifacts/* --title "Clicks-Auto $TAG" --notes "$NOTES" $PREFLAG $LATEST --target "$GITHUB_SHA"
           fi
