@@ -108,9 +108,11 @@ def run_gui(argv: Optional[list[str]] = None) -> int:
     store.ensure_example()
 
     context = AppContext(settings, store)
-    window = MainWindow(context)
-
     self_test = "--self-test" in argv
+    # The welcome dialog is modal: opening it during the self test would block
+    # the checks that follow.
+    window = MainWindow(context, show_welcome=not self_test)
+
     splash = None if self_test else (SplashScreen() if settings.ui.animations else None)
     if splash is not None:
         splash.show_animated()

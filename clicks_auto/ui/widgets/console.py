@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPlainTextEdit,
+    QTextEdit,
     QPushButton,
     QSizePolicy,
     QVBoxLayout,
@@ -76,7 +77,7 @@ class ConsoleView(QPlainTextEdit):
             block = document.findBlockByNumber(block_index)
             if not block.isValid() or ticks <= 0:
                 continue
-            selection = QPlainTextEdit.ExtraSelection()
+            selection = QTextEdit.ExtraSelection()
             cursor = QTextCursor(block)
             cursor.select(QTextCursor.SelectionType.LineUnderCursor)
             selection.cursor = cursor

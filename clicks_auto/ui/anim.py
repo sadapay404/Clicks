@@ -68,7 +68,11 @@ class Motion(QObject):
         self.enabled = bool(getattr(ui_settings, "animations", True))
         self.speed = float(getattr(ui_settings, "animation_speed", 1.0) or 1.0)
         self.reduce_motion = bool(getattr(ui_settings, "reduce_motion", False))
-        self.changed.emit()
+        try:
+            self.changed.emit()
+        except RuntimeError:
+            # The C++ object was torn down (a fresh QApplication, or shutdown).
+            revive_motion()
 
     def duration(self, ms: int) -> int:
         if not self.enabled or self.reduce_motion:
@@ -79,8 +83,56 @@ class Motion(QObject):
 MOTION = Motion()
 
 
+def motion_alive() -> bool:
+    """``True`` while the global :data:`MOTION` singleton still has a C++ object."""
+    try:
+        from PyQt6 import sip
+    except Exception:  # pragma: no cover - PyQt6 always ships sip
+        return True
+    return not sip.isdeleted(MOTION)
+
+
+def revive_motion() -> Motion:
+    """Recreate the global motion singleton after a Qt application tear down."""
+    global MOTION
+    if motion_alive():
+        return MOTION
+    MOTION = Motion()
+    return MOTION
+
+
+def _alive(obj: Any) -> bool:
+    """``True`` when the C++ object behind ``obj`` has not been destroyed."""
+    if obj is None:
+        return False
+    try:
+        from PyQt6 import sip
+    except Exception:  # pragma: no cover
+        return True
+    try:
+        return not sip.isdeleted(obj)
+    except Exception:  # pragma: no cover - not a wrapped Qt object
+        return True
+
+
+def _defer_start(animation: QPropertyAnimation, widget: QWidget, delay: int) -> None:
+    """Start ``animation`` after ``delay`` ms unless ``widget`` went away."""
+    def _start() -> None:
+        if _alive(widget) and _alive(animation):
+            animation.start()
+
+    if delay:
+        QTimer.singleShot(MOTION.duration(delay), _start)
+    else:
+        _start()
+
+
 def _keep(widget: QWidget, animation: QObject) -> QObject:
-    animation.setParent(widget)
+    try:
+        animation.setParent(widget)
+    except RuntimeError:
+        # The widget was destroyed while the animation was being created.
+        return animation
     return animation
 
 
@@ -103,16 +155,14 @@ def fade(widget: QWidget, start: float, end: float, duration: int = 220,
     animation.setEasingCurve(easing(easing_name))
 
     def _done() -> None:
-        if not keep_effect and end >= 1.0:
-            widget.setGraphicsEffect(None)
-        if finished:
+        if _alive(widget):
+            if not keep_effect and end >= 1.0:
+                widget.setGraphicsEffect(None)
+        if finished and _alive(widget):
             finished()
 
     animation.finished.connect(_done)
-    if delay:
-        QTimer.singleShot(MOTION.duration(delay), animation.start)
-    else:
-        animation.start()
+    _defer_start(animation, widget, delay)
     return _keep(widget, animation)
 
 
@@ -134,14 +184,13 @@ def fade_in(widget: QWidget, duration: int = 220, *, delay: int = 0,
     def _cleanup() -> None:
         # A leftover opacity effect forces the whole subtree through a pixmap
         # and can make text look blurry, so remove it when we are done.
+        if not (_alive(widget) and _alive(effect)):
+            return
         if effect.opacity() >= 0.999:
             widget.setGraphicsEffect(None)
 
     animation.finished.connect(_cleanup)
-    if delay:
-        QTimer.singleShot(MOTION.duration(delay), animation.start)
-    else:
-        animation.start()
+    _defer_start(animation, widget, delay)
     _keep(widget, animation)
 
 
@@ -159,6 +208,8 @@ def fade_out(widget: QWidget, duration: int = 180, *, hide: bool = True,
     animation.setEasingCurve(easing("in"))
 
     def _done() -> None:
+        if not _alive(widget):
+            return
         if hide:
             widget.setVisible(False)
         widget.setGraphicsEffect(None)
@@ -166,7 +217,7 @@ def fade_out(widget: QWidget, duration: int = 180, *, hide: bool = True,
             finished()
 
     animation.finished.connect(_done)
-    animation.start()
+    _defer_start(animation, widget, 0)
     _keep(widget, animation)
 
 
@@ -190,13 +241,11 @@ def reveal_height(widget: QWidget, duration: int = 260, *, delay: int = 0,
     animation.setEasingCurve(easing("out"))
 
     def _done() -> None:
-        widget.setMaximumHeight(16_777_215)
+        if _alive(widget):
+            widget.setMaximumHeight(16_777_215)
 
     animation.finished.connect(_done)
-    if delay:
-        QTimer.singleShot(MOTION.duration(delay), animation.start)
-    else:
-        animation.start()
+    _defer_start(animation, widget, delay)
     _keep(widget, animation)
 
 
@@ -297,7 +346,7 @@ def glow(widget: QWidget, *, color: str = "#5b8cff", radius: int = 22, alpha: in
     return effect
 
 
-def shimmer(progress_bar: QWidget, *, accent: str, period: int = 1400) -> QTimer:
+def shimmer(progress_bar: QWidget, *, accent: str = "#5b8cff", period: int = 1400) -> QTimer:
     """Left-to-right light sweep over a progress bar (pure paint, no GIF)."""
     timer = QTimer(progress_bar)
     state = {"offset": -0.4}
@@ -597,5 +646,6 @@ __all__ = [
     "MOTION", "Motion", "easing", "EASINGS", "animate_value", "tween_color", "count_up",
     "fade", "fade_in", "fade_out", "cross_fade", "reveal_height", "stagger", "pulse",
     "stop_pulse", "glow", "shimmer", "AnimatedStackedWidget", "SmoothScrollArea",
+    "motion_alive", "revive_motion",
     "smooth_autoscroll", "RippleOverlay", "HoverGlow", "AnimatedButtonMixin",
 ]

@@ -117,9 +117,10 @@ class TitleBar(QWidget):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, context: AppContext) -> None:
+    def __init__(self, context: AppContext, *, show_welcome: bool = True) -> None:
         super().__init__(None)
         self.ctx = context
+        self._show_welcome = show_welcome
         context.window = self
         self.settings = context.settings
         self.toasts = ToastManager(self, palette=context.palette)
@@ -431,6 +432,8 @@ class MainWindow(QMainWindow):
             pass
 
     def _welcome_if_needed(self) -> None:
+        if not self._show_welcome:
+            return
         if not self.settings.first_run_done:
             self.settings.first_run_done = True
             self.ctx.save()

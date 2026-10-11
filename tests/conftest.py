@@ -19,6 +19,10 @@ ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 SITE = FIXTURES / "site"
 
+# Keeping a module level reference prevents Python from garbage collecting the
+# QApplication (which would tear down every Qt object created through it).
+_QT_APP = None
+
 
 @pytest.fixture()
 def tmp_home(tmp_path, monkeypatch):
@@ -80,8 +84,12 @@ def gui_app(tmp_home, monkeypatch):
     from clicks_auto.ui.context import AppContext
     from clicks_auto.ui.theme import apply_stylesheet
 
+    global _QT_APP
     app = QApplication.instance() or QApplication([])
+    _QT_APP = app
     settings = Settings()
+    # First run dialogs are modal; keep the smoke tests free of them.
+    settings.first_run_done = True
     context = AppContext(settings, ScriptStore())
     apply_stylesheet(app, context.palette)
     yield app, context

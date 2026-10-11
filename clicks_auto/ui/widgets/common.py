@@ -31,6 +31,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ..anim import (
+    AnimatedButtonMixin,
     HoverGlow,
     MOTION,
     animate_value,
@@ -136,7 +137,7 @@ class Card(QFrame):
         return super().eventFilter(obj, event)
 
 
-class AnimatedButton(QPushButton):
+class AnimatedButton(AnimatedButtonMixin, QPushButton):
     """Push button with hover wash + ripple (works with the global stylesheet)."""
 
     def __init__(self, text: str = "", parent: Optional[QWidget] = None, *,
@@ -254,6 +255,36 @@ class Pill(QLabel):
 
 
 Badge = Pill
+
+
+class _ThemedLabel(QLabel):
+    """Base for the typographic helpers below."""
+
+    def __init__(self, text: str = "", parent: Optional[QWidget] = None, *, role: str,
+                 dim: bool = False, wrap: bool = False) -> None:
+        super().__init__(text, parent)
+        self.setProperty("role", role)
+        if dim:
+            self.setProperty("dim", "true")
+        self.setWordWrap(wrap)
+        self.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+
+
+class TitleLabel(_ThemedLabel):
+    """Large heading used at the top of cards and dialogs."""
+
+    def __init__(self, text: str = "", parent: Optional[QWidget] = None, *,
+                 level: int = 1, dim: bool = False, wrap: bool = True) -> None:
+        level = max(1, min(3, int(level)))
+        super().__init__(text, parent, role=f"h{level}", dim=dim, wrap=wrap)
+
+
+class SubtitleLabel(_ThemedLabel):
+    """Smaller, muted supporting text."""
+
+    def __init__(self, text: str = "", parent: Optional[QWidget] = None, *,
+                 faint: bool = False, wrap: bool = True) -> None:
+        super().__init__(text, parent, role="faint" if faint else "muted", wrap=wrap)
 
 
 class Divider(QFrame):
