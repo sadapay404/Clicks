@@ -21,7 +21,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ... import APP_URL, __version__
-from ...browser import detect_all
+from ...browser import detect_all, refresh_browsers
 from ...paths import (
     app_data_dir,
     human_path,
@@ -624,6 +624,9 @@ class SettingsPage(ScrollPage):
         self.chromium_button.setEnabled(True)
         self.chromium_button.setText("\u2913  Download Chromium")
         if ok:
+            # Detection is memoised, so a freshly installed Chromium only shows
+            # up after the cache is dropped.
+            refresh_browsers()
             self.ctx.toast("Chromium is ready - select 'Playwright Chromium' above.", level="success")
             self._on_browser_kind()
         else:

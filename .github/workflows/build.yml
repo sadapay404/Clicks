@@ -275,7 +275,9 @@ jobs:
           - **Animation rich interface** - animated page transitions, ripples, counters, toasts, smooth scrolling (can be reduced in Settings).
           - `clicks-auto-cli.exe` for headless runs from Task Scheduler or scripts.
 
-          **Requirements**: Windows 10/11 x64, plus Brave / Google Chrome / Microsoft Edge (or download Playwright's Chromium from Settings).
+          **Requirements**: Windows 10/11 x64, plus a Chromium based browser - **Brave (default)**,
+          Google Chrome or Microsoft Edge. No browser installed? Settings -> Browser can download
+          Playwright's Chromium for you.
 
           **Verify your download** with the `.sha256` file next to the ZIP:
           `certutil -hashfile Clicks-Auto-win64.zip SHA256`
