@@ -1,0 +1,131 @@
+{
+  "format": "clicks-auto-script",
+  "version": 1,
+  "id": "sc_245f78f6",
+  "name": "Example - Login and verify",
+  "description": "Fills a login form, submits it and verifies the dashboard loaded. Replace the selectors with your own.",
+  "author": "",
+  "start_url": "https://example.com/login",
+  "created_at": "2026-10-11T11:29:21+00:00",
+  "updated_at": "2026-10-11T11:29:21+00:00",
+  "source": "manual",
+  "keep_alive": true,
+  "variables": {
+    "username": "your-user",
+    "password": "your-password"
+  },
+  "defaults": {
+    "step_timeout_ms": 20000,
+    "navigation_timeout_ms": 45000,
+    "retries": 2,
+    "retry_delay_ms": 700,
+    "delay_between_steps_ms": 250,
+    "delay_between_loops_ms": 1200
+  },
+  "steps": [
+    {
+      "type": "goto",
+      "id": "s_025b3eb7",
+      "description": "Open the login page",
+      "value": "https://example.com/login"
+    },
+    {
+      "type": "wait_for",
+      "id": "s_f8be1e77",
+      "description": "Username field",
+      "selector": "input[name='username']",
+      "fallbacks": [
+        {
+          "kind": "placeholder",
+          "value": "Username"
+        },
+        {
+          "kind": "label",
+          "value": "Username"
+        }
+      ]
+    },
+    {
+      "type": "fill",
+      "id": "s_da81e49c",
+      "description": "Username field",
+      "selector": "input[name='username']",
+      "value": "${username}",
+      "options": {
+        "clear_first": true
+      }
+    },
+    {
+      "type": "fill",
+      "id": "s_1784b33c",
+      "description": "Password field",
+      "selector": "input[type='password']",
+      "value": "${password}",
+      "options": {
+        "clear_first": true,
+        "secret": true
+      }
+    },
+    {
+      "type": "click",
+      "id": "s_643a8a76",
+      "description": "Sign in",
+      "selector": "button[type='submit']",
+      "fallbacks": [
+        {
+          "kind": "role",
+          "value": "button[name=\"Sign in\"]"
+        },
+        {
+          "kind": "text",
+          "value": "Sign in"
+        }
+      ]
+    },
+    {
+      "type": "wait_for",
+      "id": "s_26474f20",
+      "description": "Dashboard",
+      "selector": "[data-testid='dashboard']",
+      "options": {
+        "state": "visible",
+        "timeout_ms": 30000
+      }
+    },
+    {
+      "type": "assert_text",
+      "id": "s_30d5e177",
+      "description": "Dashboard heading",
+      "selector": "[data-testid='dashboard']",
+      "value": "Welcome",
+      "options": {
+        "match": "contains",
+        "optional": true
+      }
+    },
+    {
+      "type": "extract",
+      "id": "s_ee3a8d86",
+      "description": "Account name",
+      "selector": "[data-testid='account-name']",
+      "options": {
+        "variable": "account"
+      }
+    },
+    {
+      "type": "screenshot",
+      "id": "s_dbd8c635",
+      "options": {
+        "path": "login-${__timestamp__}.png",
+        "full_page": true
+      }
+    },
+    {
+      "type": "note",
+      "id": "s_67068945",
+      "options": {
+        "text": "Everything below runs once per CSV row when a data file is attached."
+      }
+    }
+  ]
+}

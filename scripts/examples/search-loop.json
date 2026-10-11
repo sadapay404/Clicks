@@ -1,0 +1,80 @@
+{
+  "format": "clicks-auto-script",
+  "version": 1,
+  "id": "sc_76106e1e",
+  "name": "Example - Search loop with CSV data",
+  "description": "Opens a search engine and searches every term from a CSV file (one row per loop).",
+  "author": "",
+  "start_url": "https://duckduckgo.com",
+  "created_at": "2026-10-11T11:29:21+00:00",
+  "updated_at": "2026-10-11T11:29:21+00:00",
+  "source": "manual",
+  "keep_alive": true,
+  "variables": {},
+  "defaults": {
+    "step_timeout_ms": 20000,
+    "navigation_timeout_ms": 45000,
+    "retries": 2,
+    "retry_delay_ms": 700,
+    "delay_between_steps_ms": 250,
+    "delay_between_loops_ms": 1200
+  },
+  "steps": [
+    {
+      "type": "goto",
+      "id": "s_bf98c55d",
+      "description": "Open the search page",
+      "value": "https://duckduckgo.com"
+    },
+    {
+      "type": "wait_for",
+      "id": "s_dcc37d1a",
+      "description": "Search box",
+      "selector": "input[name='q']",
+      "fallbacks": [
+        {
+          "kind": "css",
+          "value": "#searchbox_input"
+        }
+      ]
+    },
+    {
+      "type": "fill",
+      "id": "s_3a59f26c",
+      "description": "Search box",
+      "selector": "input[name='q']",
+      "value": "${term}",
+      "options": {
+        "clear_first": true,
+        "press_enter": true
+      }
+    },
+    {
+      "type": "wait_for",
+      "id": "s_688fe5d0",
+      "description": "First result",
+      "selector": "article"
+    },
+    {
+      "type": "extract",
+      "id": "s_e4b139e5",
+      "description": "First result title",
+      "selector": "article h2",
+      "options": {
+        "variable": "first_result"
+      }
+    },
+    {
+      "type": "wait",
+      "id": "s_9942106b",
+      "value": "1200"
+    },
+    {
+      "type": "note",
+      "id": "s_38bf68e3",
+      "options": {
+        "text": "Run this with scripts/examples/search-terms.csv attached."
+      }
+    }
+  ]
+}

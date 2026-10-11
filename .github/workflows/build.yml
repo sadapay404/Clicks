@@ -1,0 +1,197 @@
+name: Build & Release
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Publish a GitHub Release with the built ZIP"
+        type: boolean
+        default: false
+      version:
+        description: "Version tag for the release (e.g. v1.0.0)"
+        type: string
+        default: "v1.0.0"
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------- unit tests
+  test-linux:
+    name: Unit tests (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install system libraries for Qt
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1 libegl1 libxkbcommon-x11-0 libdbus-1-3 \
+            libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0 libxcb-randr0 \
+            libxcb-render-util0 libxcb-xinerama0 libfontconfig1 libfreetype6
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+      - name: Install Playwright Chromium
+        run: python -m playwright install chromium
+      - name: Run tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest -q --timeout=600
+
+  # ------------------------------------------------- windows: tests + package
+  windows:
+    name: Windows tests & package
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+
+      - name: Install Playwright Chromium (used when Edge/Chrome are unavailable)
+        run: python -m playwright install chromium
+
+      - name: Show detected browsers
+        run: python -m clicks_auto browsers
+
+      - name: Run tests
+        run: python -m pytest -q --timeout=900
+
+      - name: Generate icons
+        run: python packaging/make_icons.py
+
+      - name: Build the portable package
+        run: python -m PyInstaller packaging/clicks_auto.spec --noconfirm --clean --distpath dist --workpath build
+
+      - name: Smoke test the packaged build (CLI)
+        shell: pwsh
+        run: |
+          .\dist\Clicks-Auto\clicks-auto-cli.exe --version
+          .\dist\Clicks-Auto\clicks-auto-cli.exe browsers
+          .\dist\Clicks-Auto\clicks-auto-cli.exe validate "scripts\examples\wikipedia-search.json"
+
+      - name: Smoke test the packaged build (GUI self test)
+        shell: pwsh
+        run: |
+          $env:CLICKS_AUTO_HOME = "$env:RUNNER_TEMP\clicks-self-test"
+          $proc = Start-Process -FilePath ".\dist\Clicks-Auto\Clicks-Auto.exe" -ArgumentList "--self-test" -PassThru -Wait
+          $report = Join-Path $env:CLICKS_AUTO_HOME "self-test-report.txt"
+          if (Test-Path $report) { Get-Content $report }
+          if ($proc.ExitCode -ne 0) { throw "GUI self test failed with exit code $($proc.ExitCode)" }
+          if (-not (Test-Path $report)) { throw "GUI self test did not write a report" }
+          if (-not (Select-String -Path $report -Pattern "result: PASS" -Quiet)) { throw "GUI self test reported FAIL" }
+          Write-Host "GUI self test passed."
+
+      - name: Add README and zip the release
+        shell: pwsh
+        run: |
+          $version = "${{ github.event.inputs.version }}"
+          if (-not $version) { $version = "v1.0.0" }
+          $version = $version.TrimStart("v")
+          $readme = @"
+          Clicks-Auto $version - portable Windows build
+          =============================================
+
+          1. Unzip this folder anywhere.
+          2. Run Clicks-Auto.exe
+          3. Press "Record Session" to capture your first automation, then "Run" to replay it.
+
+          clicks-auto-cli.exe is the headless runner:
+              clicks-auto-cli.exe run "scripts\examples\wikipedia-search.json" --loops 3
+              clicks-auto-cli.exe list
+              clicks-auto-cli.exe browsers
+
+          Your scripts, logs and browser profile are stored in
+          %LOCALAPPDATA%\Clicks-Auto  (Settings -> Files and folders opens it).
+
+          Requires Brave, Google Chrome or Microsoft Edge - or download Playwright's
+          Chromium from Settings -> Browser.
+          "@
+          Set-Content -Path "dist\Clicks-Auto\README.txt" -Value $readme -Encoding UTF8
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          Compress-Archive -Path "dist\Clicks-Auto\*" -DestinationPath "artifacts\Clicks-Auto-$version-win64.zip" -CompressionLevel Optimal
+          $hash = (Get-FileHash "artifacts\Clicks-Auto-$version-win64.zip" -Algorithm SHA256).Hash
+          Set-Content -Path "artifacts\Clicks-Auto-$version-win64.zip.sha256" -Value "$hash  Clicks-Auto-$version-win64.zip" -Encoding ASCII
+          Get-ChildItem artifacts | Format-Table Name, Length
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: clicks-auto-win64
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 30
+
+  # ------------------------------------------------------------------- release
+  release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs: [test-linux, windows]
+    if: github.event_name == 'workflow_dispatch' && inputs.release || startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download the Windows build
+        uses: actions/download-artifact@v4
+        with:
+          name: clicks-auto-win64
+          path: artifacts
+
+      - name: Decide the tag
+        id: tag
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create or update the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          NOTES="$(cat <<'EOF'
+          ## Clicks-Auto for Windows
+
+          Portable build - unzip anywhere and run `Clicks-Auto.exe`.
+
+          **Highlights**
+          - **Record Session** captures real browser actions at the DOM level (clicks, typing, dropdowns, navigations, popup tabs) into an editable JSON script.
+          - **Playback engine** with loop control: repeat N times, run for a duration, or run until you press Stop.
+          - **Smart, self-healing selectors** - every recorded action stores ranked selector candidates and playback falls back automatically.
+          - **Data driven runs** - attach a CSV/JSON file and use `${column}` placeholders, one row per loop.
+          - **Scheduled runs**, run history, error screenshots, exported logs.
+          - **Animation rich interface** - animated page transitions, ripples, counters, toasts, smooth scrolling (can be reduced in Settings).
+          - `clicks-auto-cli.exe` for headless runs from Task Scheduler or scripts.
+
+          **Requirements**: Windows 10/11 x64, plus Brave / Google Chrome / Microsoft Edge (or download Playwright's Chromium from Settings).
+
+          **Verify your download** with the `.sha256` file next to the ZIP:
+          `certutil -hashfile Clicks-Auto-win64.zip SHA256`
+          EOF
+          )"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" artifacts/* --clobber
+            gh release edit "$TAG" --title "Clicks-Auto $TAG" --notes "$NOTES"
+          else
+            gh release create "$TAG" artifacts/* --title "Clicks-Auto $TAG" --notes "$NOTES" --target "$GITHUB_SHA"
+          fi

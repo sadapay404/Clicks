@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Clicks-Auto test site</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 40px; max-width: 560px; }
+    label { display: block; margin: 12px 0 4px; font-weight: 600; }
+    input, select, button { padding: 8px; font-size: 15px; width: 100%; box-sizing: border-box; }
+    button { background: #3b6ef5; color: white; border: none; border-radius: 6px; cursor: pointer; }
+    .row { margin-top: 14px; }
+    #output { margin-top: 18px; padding: 12px; background: #eef3ff; border-radius: 8px; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <h1 id="heading">Clicks-Auto test page</h1>
+  <p class="intro">Small page with a form, a dropdown, a checkbox and a few links.</p>
+
+  <form id="demo-form">
+    <label for="name">Your name</label>
+    <input id="name" name="name" type="text" placeholder="Type your name" data-testid="name-input">
+
+    <label for="email">Email</label>
+    <input id="email" name="email" type="email" placeholder="you@example.com">
+
+    <label for="colour">Favourite colour</label>
+    <select id="colour" name="colour" data-testid="colour-select">
+      <option value="">Choose one</option>
+      <option value="red">Red</option>
+      <option value="green">Green</option>
+      <option value="blue">Blue</option>
+    </select>
+
+    <div class="row">
+      <label style="display:inline"><input type="checkbox" id="terms" name="terms" style="width:auto"> I agree to the terms</label>
+    </div>
+
+    <div class="row">
+      <button type="submit" id="submit-btn" data-testid="submit-button">Submit</button>
+    </div>
+  </form>
+
+  <div id="output" class="hidden" role="status">No submission yet.</div>
+
+  <p><a href="second.html" id="next-link">Go to the second page</a></p>
+  <p><a href="second.html" id="popup-link" target="_blank">Open the second page in a new tab</a></p>
+
+  <script>
+    const form = document.getElementById('demo-form');
+    const output = document.getElementById('output');
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const data = new FormData(form);
+      output.classList.remove('hidden');
+      output.textContent = `Hello ${data.get('name') || 'stranger'} from ${data.get('email') || 'nowhere'}, colour ${data.get('colour') || 'none'}, terms ${data.get('terms') ? 'accepted' : 'declined'}.`;
+    });
+    document.getElementById('next-link').addEventListener('click', () => {
+      window.location.href = 'second.html';
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+# Development / build dependencies
+-r requirements.txt
+pytest>=8.0
+pytest-timeout>=2.3
+pyinstaller>=6.6
+pillow>=10.3

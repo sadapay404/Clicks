@@ -1,0 +1,54 @@
+{
+  "format": "clicks-auto-script",
+  "version": 1,
+  "id": "sc_71a8378b",
+  "name": "Example - Smoke test",
+  "description": "The smallest useful script: open a page, check a heading, take a screenshot.",
+  "author": "",
+  "start_url": "https://example.com",
+  "created_at": "2026-10-11T11:29:21+00:00",
+  "updated_at": "2026-10-11T11:29:21+00:00",
+  "source": "manual",
+  "keep_alive": true,
+  "variables": {},
+  "defaults": {
+    "step_timeout_ms": 20000,
+    "navigation_timeout_ms": 45000,
+    "retries": 2,
+    "retry_delay_ms": 700,
+    "delay_between_steps_ms": 250,
+    "delay_between_loops_ms": 1200
+  },
+  "steps": [
+    {
+      "type": "goto",
+      "id": "s_df46693c",
+      "value": "https://example.com"
+    },
+    {
+      "type": "assert_visible",
+      "id": "s_f311ba21",
+      "selector": "h1",
+      "options": {
+        "timeout_ms": 10000
+      }
+    },
+    {
+      "type": "assert_text",
+      "id": "s_0d7986ee",
+      "selector": "h1",
+      "value": "Example",
+      "options": {
+        "match": "contains",
+        "optional": true
+      }
+    },
+    {
+      "type": "screenshot",
+      "id": "s_ce1d84ba",
+      "options": {
+        "path": "smoke.png"
+      }
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# PyInstaller / build output
+build/
+dist/
+*.spec.bak
+packaging/__pycache__/
+
+# Node (used only for optional JS tests)
+node_modules/
+package-lock.json
+
+# Editor / OS noise
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log
+
+# Local app data (never commit user scripts, logs or browser profiles)
+clicks-home/
+dev-data/
+screenshots/
