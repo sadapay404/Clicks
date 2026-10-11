@@ -5,12 +5,21 @@ These run headless (offscreen) on Linux and normally on the Windows runner.
 
 from __future__ import annotations
 
+import sys
+
 import pytest
 
 pytest.importorskip("PyQt6")
 
 
-@pytest.fixture()
+@pytest.fixture(autouse=True)
+def _mark_test(request):
+    """Print a marker per test: when a headless run dies, the log names it."""
+    print(f"\n--- {request.node.name}", file=sys.stderr, flush=True)
+    yield
+
+
+@pytest.fixture(scope="module")
 def window(gui_app):
     app, context = gui_app
     from clicks_auto.models import Script, Step
@@ -26,12 +35,9 @@ def window(gui_app):
     win.show()
     app.processEvents()
     yield win
-    win.recorder_page.shutdown()
-    win.run_page.shutdown()
-    try:
-        win.scheduler.stop()
-    except Exception:
-        pass
+    # ``shutdown`` stops and *joins* every worker; destroying a window while a
+    # worker still runs is what used to abort the Windows runner.
+    win.shutdown()
     win.close()
     app.processEvents()
 
@@ -153,6 +159,9 @@ def test_settings_page_applies_changes(window):
 
 
 def test_toast_manager_shows_notifications(window):
+    # The window is shared by the whole module, so count the new toasts instead
+    # of assuming the stack starts empty.
+    before = len(window.toasts.toasts)
     window.toasts.success("hello from the test suite")
     window.toasts.error("and an error", title="Uh oh")
-    assert len(window.toasts.toasts) == 2
+    assert len(window.toasts.toasts) >= before + 2

@@ -26,6 +26,7 @@ from . import theme
 from .anim import MOTION, AnimatedStackedWidget, fade_in
 from .context import AppContext
 from .dialogs import WelcomeDialog
+from .runner import join_threads
 from .pages import (
     DashboardPage,
     HistoryPage,
@@ -515,6 +516,31 @@ class MainWindow(QMainWindow):
         else:
             self.unsetCursor()
 
+    def shutdown(self) -> None:
+        """Stop every background worker owned by this window and join it.
+
+        Called from :meth:`closeEvent` and by tests/scripts that tear a window
+        down; a Qt object must never be destroyed while its worker thread is
+        still running.
+        """
+        try:
+            self._scheduler.stop()
+        except Exception:
+            pass
+        animations_enabled = MOTION.enabled
+        MOTION.enabled = False          # no fades while widgets disappear
+        try:
+            for page in self.pages.values():
+                shutdown = getattr(page, "shutdown", None)
+                if callable(shutdown):
+                    try:
+                        shutdown()
+                    except Exception:
+                        continue
+            join_threads(self)
+        finally:
+            MOTION.enabled = animations_enabled
+
     def closeEvent(self, event) -> None:  # noqa: N802
         self._persist_window()
         if self.run_page.busy() or self.recorder_page.busy():
@@ -528,12 +554,7 @@ class MainWindow(QMainWindow):
             if answer != QMessageBox.StandardButton.Yes:
                 event.ignore()
                 return
-        try:
-            self._scheduler.stop()
-        except Exception:
-            pass
-        self.run_page.shutdown()
-        self.recorder_page.shutdown()
+        self.shutdown()
         self.settings.ui.window_width = self.width()
         self.settings.ui.window_height = self.height()
         self.ctx.save()

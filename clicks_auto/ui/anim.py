@@ -8,6 +8,7 @@ smooth scrolling and page transitions.  Everything respects the user's
 
 from __future__ import annotations
 
+import weakref
 from typing import Any, Callable, Optional
 
 from PyQt6.QtCore import (
@@ -159,6 +160,60 @@ def _defer_start(animation: QPropertyAnimation, widget: QWidget, delay: int) -> 
         _go()
 
 
+# ---------------------------------------------------------- per widget state
+# One running fade/pulse animation per widget.  Creating a second one (or a
+# second QGraphicsOpacityEffect) leaves the first animation pointing at an
+# object Qt has already deleted, which Qt reports as
+# "QPropertyAnimation::updateState (opacity): Changing state of an animation
+# without target" and which eventually crashes the process.
+_animations: "weakref.WeakKeyDictionary[QWidget, QObject]" = weakref.WeakKeyDictionary()
+
+
+def _register(widget: QWidget, animation: QObject) -> None:
+    previous = _animations.get(widget)
+    if previous is not None and previous is not animation and _alive(previous):
+        try:
+            previous.stop()
+        except RuntimeError:
+            pass
+    _animations[widget] = animation
+
+
+def _is_current(widget: QWidget, animation: QObject) -> bool:
+    return _animations.get(widget) is animation
+
+
+def _opacity_effect(widget: QWidget) -> tuple[QGraphicsOpacityEffect, bool]:
+    """The widget's opacity effect, created only when it does not have one."""
+    existing = widget.graphicsEffect()
+    if isinstance(existing, QGraphicsOpacityEffect):
+        return existing, False
+    effect = QGraphicsOpacityEffect(widget)
+    widget.setGraphicsEffect(effect)
+    return effect, True
+
+
+def _drop_effect(widget: QWidget, effect: QGraphicsOpacityEffect) -> None:
+    """Remove ``effect`` from ``widget`` from a fresh event-loop turn.
+
+    Never call this from an animation's ``finished`` handler: the animation is
+    still finalising itself at that point and still references the effect as its
+    target, so destroying the effect there is a use-after-free (it shows up as
+    an intermittent ``QPropertyAnimation::updateState ... without target``
+    warning and then a hard crash).
+    """
+    def _drop() -> None:
+        if not _alive(widget) or not _alive(effect):
+            return
+        try:
+            if widget.graphicsEffect() is effect:
+                widget.setGraphicsEffect(None)
+        except RuntimeError:
+            pass
+
+    QTimer.singleShot(0, _drop)
+
+
 def _keep(widget: QWidget, animation: QObject) -> QObject:
     try:
         animation.setParent(widget)
@@ -174,11 +229,10 @@ def _keep(widget: QWidget, animation: QObject) -> QObject:
 def fade(widget: QWidget, start: float, end: float, duration: int = 220,
          *, delay: int = 0, easing_name: str = "out",
          finished: Optional[Callable[[], None]] = None,
-         keep_effect: bool = True) -> QPropertyAnimation:
-    effect = widget.graphicsEffect()
-    if not isinstance(effect, QGraphicsOpacityEffect):
-        effect = QGraphicsOpacityEffect(widget)
-        widget.setGraphicsEffect(effect)
+         keep_effect: bool = True) -> Optional[QPropertyAnimation]:
+    if not _alive(widget):
+        return None
+    effect, created = _opacity_effect(widget)
     widget.setVisible(True)
     animation = QPropertyAnimation(effect, b"opacity", widget)
     animation.setStartValue(float(start))
@@ -189,12 +243,13 @@ def fade(widget: QWidget, start: float, end: float, duration: int = 220,
     def _done() -> None:
         if not _alive(widget):
             return
-        if not keep_effect and end >= 1.0:
-            widget.setGraphicsEffect(None)
+        if created and not keep_effect and end >= 1.0 and _is_current(widget, animation):
+            _drop_effect(widget, effect)
         if finished:
             finished()
 
     animation.finished.connect(_done)
+    _register(widget, animation)
     _defer_start(animation, widget, delay)
     return _keep(widget, animation)
 
@@ -202,43 +257,48 @@ def fade(widget: QWidget, start: float, end: float, duration: int = 220,
 def fade_in(widget: QWidget, duration: int = 220, *, delay: int = 0,
             easing_name: str = "out", block_input: bool = False) -> None:
     """Fade a widget in and drop the opacity effect once it is fully visible."""
+    if not _alive(widget):
+        return
     if block_input:
         widget.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
-    effect = QGraphicsOpacityEffect(widget)
-    widget.setGraphicsEffect(effect)
-    effect.setOpacity(0.0)
+    effect, created = _opacity_effect(widget)
+    try:
+        effect.setOpacity(0.0)
+    except RuntimeError:
+        return
     widget.setVisible(True)
     animation = QPropertyAnimation(effect, b"opacity", widget)
     animation.setStartValue(0.0)
     animation.setEndValue(1.0)
     animation.setDuration(MOTION.duration(duration))
     animation.setEasingCurve(easing(easing_name))
+    if not _alive(widget):
+        return
 
     def _cleanup() -> None:
         # A leftover opacity effect forces the whole subtree through a pixmap
-        # and can make text look blurry, so remove it when we are done.
-        if not _alive(widget) or not _alive(effect):
-            return
-        try:
-            if effect.opacity() >= 0.999:
-                widget.setGraphicsEffect(None)
-        except RuntimeError:
-            pass
+        # and can make text look blurry, so remove it once we are done - one
+        # event-loop turn later, so the animation can finish first.
+        if created and _is_current(widget, animation):
+            _drop_effect(widget, effect)
 
     animation.finished.connect(_cleanup)
+    _register(widget, animation)
     _defer_start(animation, widget, delay)
     _keep(widget, animation)
 
 
 def fade_out(widget: QWidget, duration: int = 180, *, hide: bool = True,
              finished: Optional[Callable[[], None]] = None) -> None:
-    effect = widget.graphicsEffect()
-    if not isinstance(effect, QGraphicsOpacityEffect):
-        effect = QGraphicsOpacityEffect(widget)
-        widget.setGraphicsEffect(effect)
-        effect.setOpacity(1.0)
+    if not _alive(widget):
+        return
+    effect, created = _opacity_effect(widget)
+    try:
+        current = effect.opacity()
+    except RuntimeError:
+        return
     animation = QPropertyAnimation(effect, b"opacity", widget)
-    animation.setStartValue(effect.opacity())
+    animation.setStartValue(current)
     animation.setEndValue(0.0)
     animation.setDuration(MOTION.duration(duration))
     animation.setEasingCurve(easing("in"))
@@ -248,17 +308,21 @@ def fade_out(widget: QWidget, duration: int = 180, *, hide: bool = True,
             return
         if hide:
             widget.setVisible(False)
-        widget.setGraphicsEffect(None)
+        if created and _is_current(widget, animation):
+            _drop_effect(widget, effect)
         if finished:
             finished()
 
     animation.finished.connect(_done)
+    _register(widget, animation)
     _defer_start(animation, widget, 0)
     _keep(widget, animation)
 
 
 def cross_fade(widget: QWidget, duration: int = 260) -> None:
     """Quick dip-to-transparent-and-back, used for theme changes."""
+    if not _alive(widget):
+        return
     fade(widget, 1.0, 0.0, duration // 2, easing_name="in",
          finished=lambda: fade(widget, 0.0, 1.0, duration // 2, easing_name="out"))
 
@@ -266,6 +330,8 @@ def cross_fade(widget: QWidget, duration: int = 260) -> None:
 def reveal_height(widget: QWidget, duration: int = 260, *, delay: int = 0,
                   fade_too: bool = True) -> None:
     """Layout-safe "grow into place" reveal used for cards and rows."""
+    if not _alive(widget):
+        return
     target = widget.sizeHint().height() or widget.minimumHeight() or 40
     widget.setMaximumHeight(0)
     if fade_too:
@@ -288,6 +354,8 @@ def reveal_height(widget: QWidget, duration: int = 260, *, delay: int = 0,
 def stagger(widgets: list[QWidget], *, step: int = 45, duration: int = 260,
             base_delay: int = 0) -> None:
     """Reveal a list of widgets one after another."""
+    if not MOTION.enabled:
+        return
     for index, widget in enumerate(widgets):
         fade_in(widget, duration, delay=base_delay + index * step)
 
@@ -323,23 +391,25 @@ def count_up(label, start: float, end: float, duration: int = 700,
     fmt = formatter or (lambda value: f"{int(round(value)):,}")
 
     def apply(value: Any) -> None:
-        label.setText(fmt(float(value)))
+        if _alive(label):
+            label.setText(fmt(float(value)))
 
     animate_value(start, end, duration, apply, easing_name=easing_name, parent=label)
 
 
-def pulse(widget: QWidget, *, low: float = 0.35, high: float = 1.0, period: int = 900) -> QPropertyAnimation:
+def pulse(widget: QWidget, *, low: float = 0.35, high: float = 1.0,
+          period: int = 900) -> Optional[QPropertyAnimation]:
     """Endless opacity pulse (recording indicator, live dots)."""
-    effect = widget.graphicsEffect()
-    if not isinstance(effect, QGraphicsOpacityEffect):
-        effect = QGraphicsOpacityEffect(widget)
-        widget.setGraphicsEffect(effect)
+    if not _alive(widget):
+        return None
+    effect, _ = _opacity_effect(widget)
     animation = QPropertyAnimation(effect, b"opacity", widget)
     animation.setStartValue(high)
     animation.setKeyValueAt(0.5, low)
     animation.setEndValue(high)
     animation.setDuration(MOTION.duration(period))
     animation.setLoopCount(-1)
+    _register(widget, animation)
     _start(animation)
     return _keep(widget, animation)
 
@@ -347,8 +417,11 @@ def pulse(widget: QWidget, *, low: float = 0.35, high: float = 1.0, period: int 
 def stop_pulse(animation: Optional[QPropertyAnimation], widget: QWidget) -> None:
     if animation is not None and _alive(animation):
         animation.stop()
-    if _alive(widget) and widget.graphicsEffect() is not None:
-        widget.setGraphicsEffect(None)
+    if not _alive(widget):
+        return
+    effect = widget.graphicsEffect()
+    if isinstance(effect, QGraphicsOpacityEffect):
+        _drop_effect(widget, effect)
 
 
 def glow(widget: QWidget, *, color: str = "#5b8cff", radius: int = 22, alpha: int = 130,

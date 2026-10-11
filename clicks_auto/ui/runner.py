@@ -8,6 +8,7 @@ a small command queue.
 from __future__ import annotations
 
 import queue
+import time
 from typing import Any, Optional
 
 from PyQt6.QtCore import QThread, pyqtSignal
@@ -233,7 +234,13 @@ class RecorderWorker(QThread):
 
 
 class BrowserProbe(QThread):
-    """Detects installed browsers off the GUI thread."""
+    """Detects installed browsers off the GUI thread.
+
+    Probing touches the registry and the file system, which is slow enough on
+    Windows to be worth a thread - but a thread that outlives the window it was
+    started from will happily emit into half destroyed widgets, so every owner
+    of a probe must join it (see :func:`join_threads`).
+    """
 
     found = pyqtSignal(dict)
 
@@ -241,9 +248,38 @@ class BrowserProbe(QThread):
         from ..browser import detect_all
 
         try:
-            self.found.emit(detect_all())
+            found = detect_all()
         except Exception:
-            self.found.emit({})
+            found = {}
+        if not self._stopping:
+            self.found.emit(found)
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self._stopping = False
+
+    def stop(self) -> None:
+        """Mark the probe as unwanted and wait for the running check to end."""
+        self._stopping = True
+        if self.isRunning():
+            self.wait(4000)
+
+
+def join_threads(root, *, timeout_ms: int = 5000) -> None:
+    """Wait for every :class:`QThread` below ``root``.
+
+    Qt widgets must not be destroyed while a worker is still running: the worker
+    may emit into them, or worse, keep a raw pointer around.  Callers use this
+    right before tearing a window down.
+    """
+    from PyQt6.QtCore import QThread
+
+    deadline = time.monotonic() + (timeout_ms / 1000.0)
+    for thread in root.findChildren(QThread):
+        if not thread.isRunning():
+            continue
+        remaining = max(200, int((deadline - time.monotonic()) * 1000))
+        thread.wait(remaining)
 
 
 class ChromiumInstaller(QThread):

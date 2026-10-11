@@ -71,11 +71,16 @@ def chromium_path() -> str:
     return path
 
 
-@pytest.fixture()
-def gui_app(tmp_home, monkeypatch):
-    """A QApplication instance (offscreen when there is no display)."""
+@pytest.fixture(scope="session")
+def gui_app(tmp_path_factory):
+    """One QApplication (offscreen when there is no display) for the session.
+
+    A single application/window pair keeps the GUI tests stable: Qt tears down
+    every object when its QApplication dies, so building a new one per test
+    would race against the workers of the previous test.
+    """
     if not os.environ.get("DISPLAY") and os.name != "nt":
-        monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     pytest.importorskip("PyQt6")
     from PyQt6.QtWidgets import QApplication
 
@@ -85,11 +90,12 @@ def gui_app(tmp_home, monkeypatch):
     from clicks_auto.ui.theme import apply_stylesheet
 
     global _QT_APP
+    home = tmp_path_factory.mktemp("clicks-home")
+    os.environ["CLICKS_AUTO_HOME"] = str(home)
     app = QApplication.instance() or QApplication([])
     _QT_APP = app
     settings = Settings()
-    # Every test gets a throw-away home directory, so the first-run welcome
-    # dialog would pop up (modal, unanswerable) in every single test.
+    # The first-run welcome dialog is modal; a headless run cannot answer it.
     settings.first_run_done = True
     context = AppContext(settings, ScriptStore())
     apply_stylesheet(app, context.palette)

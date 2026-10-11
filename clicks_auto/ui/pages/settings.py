@@ -64,10 +64,27 @@ class SettingsPage(ScrollPage):
         self.add(self._build_about_card())
         self._load_values()
 
+        # Created on first show - probing the disk is pointless while the user
+        # is still on the dashboard, and it keeps window construction cheap.
+        self._probe: Optional[BrowserProbe] = None
+        self._installer: Optional[ChromiumInstaller] = None
+
+    # ---------------------------------------------------------------- control
+    def start_probe(self) -> None:
+        """Look for installed browsers (once) in the background."""
+        if self._probe is not None and self._probe.isRunning():
+            return
         self._probe = BrowserProbe(self)
         self._probe.found.connect(self._on_probe)
         self._probe.start()
-        self._installer: Optional[ChromiumInstaller] = None
+
+    def shutdown(self) -> None:
+        """Stop background work owned by this page (probe, installer)."""
+        if self._probe is not None:
+            self._probe.stop()
+        if self._installer is not None and self._installer.isRunning():
+            self._installer.requestInterruption()
+            self._installer.wait(4000)
 
     # --------------------------------------------------------------- sections
     def _build_appearance_card(self) -> QWidget:
@@ -563,7 +580,8 @@ class SettingsPage(ScrollPage):
             self._on_browser_kind()
 
     def _redetect(self) -> None:
-        detect_all.cache_clear() if hasattr(detect_all, "cache_clear") else None
+        if hasattr(detect_all, "cache_clear"):
+            detect_all.cache_clear()
         self._on_browser_kind()
         self.ctx.toast("Re-checked the installed browsers.", level="info")
 
@@ -642,4 +660,5 @@ class SettingsPage(ScrollPage):
 
     def showEvent(self, event) -> None:  # noqa: N802
         super().showEvent(event)
+        self.start_probe()
         self._load_values()

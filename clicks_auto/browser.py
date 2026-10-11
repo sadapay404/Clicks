@@ -8,10 +8,13 @@ import shutil
 import subprocess
 import sys
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Optional
 
 from .paths import default_user_data_dir, playwright_browsers_dir, profiles_dir
+
+BROWSER_KINDS = ("brave", "chrome", "edge", "chromium")
 
 
 def playwright_browsers_path() -> Path:
@@ -172,6 +175,18 @@ def _candidates_for(kind: str) -> list[tuple[str, str]]:
 
 
 def detect_browser(kind: str) -> BrowserChoice:
+    """Where a Chromium flavour lives on this machine (memoised).
+
+    Probing walks the registry, a handful of folders and ``PATH``; on Windows
+    that is slow enough to be noticeable, and it is done from a background
+    thread every time the settings page is built.  The result is cached until
+    :func:`refresh_browsers` is called.
+    """
+    return _detect_browser_cached(str(kind))
+
+
+@lru_cache(maxsize=16)
+def _detect_browser_cached(kind: str) -> BrowserChoice:
     labels = {
         "brave": "Brave",
         "chrome": "Google Chrome",
@@ -194,7 +209,14 @@ def detect_browser(kind: str) -> BrowserChoice:
 
 
 def detect_all() -> dict[str, BrowserChoice]:
-    return {kind: detect_browser(kind) for kind in ("brave", "chrome", "edge", "chromium")}
+    """Every supported flavour, as a fresh dict (the values are cached)."""
+    return {kind: detect_browser(kind) for kind in BROWSER_KINDS}
+
+
+def refresh_browsers() -> dict[str, BrowserChoice]:
+    """Forget the cache and probe again (used after installing Chromium)."""
+    _detect_browser_cached.cache_clear()
+    return detect_all()
 
 
 def _profile_dirs_for(kind: str) -> list[tuple[str, str]]:
