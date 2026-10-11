@@ -242,6 +242,15 @@ python -m pytest -q
 
 Set `CLICKS_AUTO_SKIP_BROWSER_TESTS=1` to skip the browser tests in restricted environments.
 
+Useful environment variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `CLICKS_AUTO_HOME` | Store scripts, logs, profiles and settings somewhere other than `%LOCALAPPDATA%\Clicks-Auto` |
+| `CLICKS_AUTO_SKIP_BROWSER_TESTS` | Skip the browser integration tests |
+| `CLICKS_AUTO_BROWSER_ARGS` | Extra Chromium flags appended to every launch, e.g. `--single-process --disable-dev-shm-usage` for containers, locked down desktops or CI |
+| `PLAYWRIGHT_BROWSERS_PATH` | Point Playwright at an existing browser download folder |
+
 ---
 
 ## Troubleshooting
@@ -254,6 +263,7 @@ Set `CLICKS_AUTO_SKIP_BROWSER_TESTS=1` to skip the browser tests in restricted e
 | A step times out on a slow page | Increase Settings → Timeouts, or add a **Wait for element** step in the editor |
 | Steps broke after a site redesign | Re-record that part, or rely on the fallback chain and "Save healed selectors" |
 | Uploads do nothing | File inputs need real paths: edit the recorded `Upload file` step and list full paths |
+| The browser will not start in a container / hardened desktop | Set `CLICKS_AUTO_BROWSER_ARGS="--single-process --disable-dev-shm-usage --no-zygote"` and retry |
 
 ---
 

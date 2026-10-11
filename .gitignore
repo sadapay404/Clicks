@@ -32,3 +32,6 @@ Thumbs.db
 clicks-home/
 dev-data/
 screenshots/
+
+# CI test reports
+/test-results/

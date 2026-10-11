@@ -23,9 +23,15 @@ def configure_environment() -> None:
         # portable build stays self contained.
         root = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
         os.environ.setdefault("PLAYWRIGHT_NODEJS_PATH", str(root / "playwright" / "driver" / "node.exe"))
-        if (root / "ms-playwright").exists():
-            os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(root / "ms-playwright"))
         os.environ.setdefault("PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD", "1")
+        if (root / "ms-playwright").exists():
+            # A Chromium was shipped inside this build - prefer it (read only, no download).
+            os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(root / "ms-playwright"))
+        else:
+            # Otherwise anything the user downloads lands in their own data folder.
+            from .paths import playwright_browsers_dir
+
+            os.environ.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(playwright_browsers_dir()))
 
     if sys.platform == "win32":
         try:

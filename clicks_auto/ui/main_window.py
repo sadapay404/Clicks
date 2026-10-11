@@ -150,6 +150,8 @@ class MainWindow(QMainWindow):
         apply_stylesheet(QApplication.instance(), context.palette, compact=self.settings.ui.compact)
         self.statusBar().showMessage("Ready.")
         self.show_page(self.settings.ui.start_page or "dashboard", animate=False)
+        self.allow_welcome = True
+        QTimer.singleShot(90, self.sidebar.play_entrance)
         QTimer.singleShot(120, self._welcome_if_needed)
         QTimer.singleShot(80, lambda: fade_in(self.centralWidget(), 260) if MOTION.enabled else None)
 
@@ -318,6 +320,9 @@ class MainWindow(QMainWindow):
         if app is not None:
             apply_stylesheet(app, palette, compact=self.settings.ui.compact)
         self.sidebar.set_palette(palette)
+        self.title_bar.quick_record.set_accent(palette.danger)
+        self.title_bar.quick_run.set_accent(palette.accent)
+        self.title_bar.quick_stop.set_accent(palette.accent)
         for page in self.pages.values():
             if hasattr(page, "apply_palette"):
                 page.apply_palette(palette)
@@ -431,10 +436,15 @@ class MainWindow(QMainWindow):
             pass
 
     def _welcome_if_needed(self) -> None:
-        if not self.settings.first_run_done:
-            self.settings.first_run_done = True
-            self.ctx.save()
-            WelcomeDialog(self, palette=self.ctx.palette).exec()
+        # ``allow_welcome`` lets headless tests and scripted launches opt out;
+        # a modal dialog nobody can answer would otherwise block forever.
+        if not self.allow_welcome:
+            return
+        if self.settings.first_run_done or not self.isVisible():
+            return
+        self.settings.first_run_done = True
+        self.ctx.save()
+        WelcomeDialog(self, palette=self.ctx.palette).exec()
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         super().resizeEvent(event)

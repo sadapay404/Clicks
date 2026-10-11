@@ -15,8 +15,6 @@ from .common import (  # noqa: F401
     SectionHeader,
     SegmentControl,
     StatTile,
-    SubtitleLabel,
-    TitleLabel,
     Toast,
     ToastManager,
     ToggleSwitch,
@@ -25,6 +23,5 @@ from .common import (  # noqa: F401
 __all__ = [
     "AnimatedButton", "AnimatedProgressBar", "Badge", "Card", "Divider", "EmptyState",
     "IconButton", "KeyValueRow", "Pill", "ScrollPage", "SearchBox", "SectionHeader",
-    "SegmentControl", "StatTile", "SubtitleLabel", "TitleLabel", "Toast", "ToastManager",
-    "ToggleSwitch",
+    "SegmentControl", "StatTile", "Toast", "ToastManager", "ToggleSwitch",
 ]

@@ -39,8 +39,6 @@ class AppContext(QObject):
         self.palette_changed.emit(self.palette)
 
     def save(self) -> None:
-        if self.toasts is not None and self.settings.ui.toasts is False:
-            pass
         self.settings.clamp()
         MOTION.update_from(self.settings.ui)
         try:

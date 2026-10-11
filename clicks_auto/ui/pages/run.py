@@ -537,6 +537,7 @@ class RunPage(ScrollPage):
             self.progress.setRange(0, 100)
             self.progress.setValue(0)
             self.progress.set_tone("accent")
+            self.progress.set_shimmer_accent(self.ctx.palette.accent)
             self.progress.start_indeterminate()
             self.status_label.setText("Starting the browser...")
             self.detail_label.setText("Playwright is launching your browser.")

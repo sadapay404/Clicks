@@ -31,6 +31,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ..anim import (
+    AnimatedButtonMixin,
     HoverGlow,
     MOTION,
     animate_value,
@@ -136,7 +137,7 @@ class Card(QFrame):
         return super().eventFilter(obj, event)
 
 
-class AnimatedButton(QPushButton):
+class AnimatedButton(AnimatedButtonMixin, QPushButton):
     """Push button with hover wash + ripple (works with the global stylesheet)."""
 
     def __init__(self, text: str = "", parent: Optional[QWidget] = None, *,
@@ -353,7 +354,7 @@ class AnimatedProgressBar(QProgressBar):
     """Progress bar with eased value changes and an optional shimmer sweep."""
 
     def __init__(self, parent: Optional[QWidget] = None, *, tone: str = "accent",
-                 show_text: bool = False) -> None:
+                 show_text: bool = False, accent: str = "") -> None:
         super().__init__(parent)
         self.setProperty("tone", tone)
         self.setTextVisible(show_text)
@@ -362,7 +363,17 @@ class AnimatedProgressBar(QProgressBar):
         self._shimmer_timer: Optional[QTimer] = None
         self._shimmer_pos = -0.4
         self._indeterminate = False
+        self._accent = accent
+        if accent:
+            self.setProperty("shimmer_accent", accent)
         self.setProperty("shimmer", self._shimmer_pos)
+
+    def set_shimmer_accent(self, accent: str) -> None:
+        """Tint the indeterminate shimmer sweep (empty string = white)."""
+        self._accent = accent
+        if accent:
+            self.setProperty("shimmer_accent", accent)
+        self.update()
 
     def set_tone(self, tone: str) -> None:
         self.setProperty("tone", tone)
@@ -383,7 +394,7 @@ class AnimatedProgressBar(QProgressBar):
             self.setFormat(label)
         self.setRange(0, 0)
         if self._shimmer_timer is None:
-            self._shimmer_timer = shimmer(self)
+            self._shimmer_timer = shimmer(self, accent=self._accent)
         self._shimmer_timer.start(40)
 
     def stop_indeterminate(self, *, tone: str = "accent", value: int = 0) -> None:
@@ -409,8 +420,9 @@ class AnimatedProgressBar(QProgressBar):
         painter.setClipPath(path)
         width = int(self.width() * 0.28)
         x = int(self.width() * position)
-        gradient_color = QColor("#ffffff")
-        gradient_color.setAlpha(38)
+        tint = self.property("shimmer_accent")
+        gradient_color = QColor(tint) if tint else QColor("#ffffff")
+        gradient_color.setAlpha(56 if tint else 38)
         painter.setBrush(gradient_color)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.drawRect(x, 0, width, self.height())

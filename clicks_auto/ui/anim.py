@@ -53,13 +53,41 @@ def easing(name: str | QEasingCurve.Type) -> QEasingCurve.Type:
 # --------------------------------------------------------------------------
 
 
-class Motion(QObject):
-    """Global animation preferences (kept in sync with the settings)."""
+class _MotionSignal:
+    """Minimal stand-in for a Qt signal.
 
-    changed = pyqtSignal()
+    :class:`Motion` deliberately is *not* a QObject: it lives for the whole
+    process while QApplication instances come and go (unit tests, restarts),
+    and a QObject owned by a dead application crashes on the next access.
+    """
 
     def __init__(self) -> None:
-        super().__init__()
+        self._slots: list[Callable[..., None]] = []
+
+    def connect(self, slot: Callable[..., None]) -> None:
+        if slot not in self._slots:
+            self._slots.append(slot)
+
+    def disconnect(self, slot: Optional[Callable[..., None]] = None) -> None:
+        if slot is None:
+            self._slots.clear()
+        elif slot in self._slots:
+            self._slots.remove(slot)
+
+    def emit(self, *args: Any) -> None:
+        for slot in list(self._slots):
+            try:
+                slot(*args)
+            except RuntimeError:
+                # The widget behind this slot was torn down; forget it.
+                self._slots.remove(slot)
+
+
+class Motion:
+    """Global animation preferences (kept in sync with the settings)."""
+
+    def __init__(self) -> None:
+        self.changed = _MotionSignal()
         self.enabled = True
         self.speed = 1.0
         self.reduce_motion = False
@@ -77,6 +105,40 @@ class Motion(QObject):
 
 
 MOTION = Motion()
+
+
+def _alive(obj: Any) -> bool:
+    """True while ``obj`` still wraps a living C++ object.
+
+    Widgets are torn down and rebuilt all over the UI (page switches, list
+    refreshes).  An animation callback that fires during that teardown would
+    otherwise touch a deleted QGraphicsOpacityEffect and raise RuntimeError -
+    or worse, abort the process because PyQt turns unhandled exceptions inside
+    Qt slots into ``qFatal``.
+    """
+    if obj is None:
+        return False
+    try:
+        from shiboken6 import isValid
+    except Exception:  # pragma: no cover - shiboken always ships with PyQt6
+        try:
+            return obj.sip is not None  # type: ignore[attr-defined]
+        except Exception:
+            return True
+    try:
+        return bool(isValid(obj))
+    except Exception:
+        return True
+
+
+def _safe_start(animation: QVariantAnimation) -> None:
+    """Start ``animation`` unless its target has already been destroyed."""
+    if not _alive(animation):
+        return
+    try:
+        animation.start()
+    except RuntimeError:
+        pass
 
 
 def _keep(widget: QWidget, animation: QObject) -> QObject:
@@ -103,16 +165,16 @@ def fade(widget: QWidget, start: float, end: float, duration: int = 220,
     animation.setEasingCurve(easing(easing_name))
 
     def _done() -> None:
-        if not keep_effect and end >= 1.0:
+        if _alive(widget) and not keep_effect and end >= 1.0:
             widget.setGraphicsEffect(None)
         if finished:
             finished()
 
     animation.finished.connect(_done)
     if delay:
-        QTimer.singleShot(MOTION.duration(delay), animation.start)
+        QTimer.singleShot(MOTION.duration(delay), lambda: _safe_start(animation))
     else:
-        animation.start()
+        _safe_start(animation)
     return _keep(widget, animation)
 
 
@@ -134,14 +196,19 @@ def fade_in(widget: QWidget, duration: int = 220, *, delay: int = 0,
     def _cleanup() -> None:
         # A leftover opacity effect forces the whole subtree through a pixmap
         # and can make text look blurry, so remove it when we are done.
-        if effect.opacity() >= 0.999:
-            widget.setGraphicsEffect(None)
+        if not _alive(widget) or not _alive(effect):
+            return
+        try:
+            if effect.opacity() >= 0.999:
+                widget.setGraphicsEffect(None)
+        except RuntimeError:
+            pass
 
     animation.finished.connect(_cleanup)
     if delay:
-        QTimer.singleShot(MOTION.duration(delay), animation.start)
+        QTimer.singleShot(MOTION.duration(delay), lambda: _safe_start(animation))
     else:
-        animation.start()
+        _safe_start(animation)
     _keep(widget, animation)
 
 
@@ -159,9 +226,10 @@ def fade_out(widget: QWidget, duration: int = 180, *, hide: bool = True,
     animation.setEasingCurve(easing("in"))
 
     def _done() -> None:
-        if hide:
-            widget.setVisible(False)
-        widget.setGraphicsEffect(None)
+        if _alive(widget):
+            if hide:
+                widget.setVisible(False)
+            widget.setGraphicsEffect(None)
         if finished:
             finished()
 
@@ -190,13 +258,14 @@ def reveal_height(widget: QWidget, duration: int = 260, *, delay: int = 0,
     animation.setEasingCurve(easing("out"))
 
     def _done() -> None:
-        widget.setMaximumHeight(16_777_215)
+        if _alive(widget):
+            widget.setMaximumHeight(16_777_215)
 
     animation.finished.connect(_done)
     if delay:
-        QTimer.singleShot(MOTION.duration(delay), animation.start)
+        QTimer.singleShot(MOTION.duration(delay), lambda: _safe_start(animation))
     else:
-        animation.start()
+        _safe_start(animation)
     _keep(widget, animation)
 
 
@@ -297,8 +366,14 @@ def glow(widget: QWidget, *, color: str = "#5b8cff", radius: int = 22, alpha: in
     return effect
 
 
-def shimmer(progress_bar: QWidget, *, accent: str, period: int = 1400) -> QTimer:
-    """Left-to-right light sweep over a progress bar (pure paint, no GIF)."""
+def shimmer(progress_bar: QWidget, *, accent: str = "", period: int = 1400) -> QTimer:
+    """Left-to-right light sweep over a progress bar (pure paint, no GIF).
+
+    ``accent`` optionally tints the sweep; the bar reads it back from a Qt
+    property while painting, so the animation itself stays allocation free.
+    """
+    if accent:
+        progress_bar.setProperty("shimmer_accent", accent)
     timer = QTimer(progress_bar)
     state = {"offset": -0.4}
 

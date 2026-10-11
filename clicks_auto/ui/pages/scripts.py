@@ -422,9 +422,9 @@ class ScriptsPage(ScrollPage):
 
     def new_script(self) -> None:
         script = Script(name="New script", description="Created by hand", source="manual")
-        self.ctx.store.save(script, self.ctx.store.unique_path_for("New script"))
+        path = self.ctx.store.save(script, self.ctx.store.unique_path_for("New script"))
         self.refresh_library()
-        self.load_script(self.ctx.store.path_for(script.name))
+        self.load_script(path)
         self.ctx.toast("New script created - add some steps.", level="success")
 
     def duplicate_script(self) -> None:
@@ -698,7 +698,6 @@ class ScriptsPage(ScrollPage):
             return None
         self._sync_from_fields()
         target = self.path or self.ctx.store.unique_path_for(self.script.name)
-        previous_name = self.path
         self.ctx.store.save(self.script, target)
         self.path = target
         self.dirty = False
@@ -706,8 +705,6 @@ class ScriptsPage(ScrollPage):
         self._update_status()
         if not quiet:
             self.ctx.toast(f"Saved '{self.script.name}'.", level="success")
-        if previous_name != target and previous_name is not None and previous_name.exists():
-            pass
         return target
 
     def save_script_as(self) -> None:

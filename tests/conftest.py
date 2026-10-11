@@ -82,6 +82,9 @@ def gui_app(tmp_home, monkeypatch):
 
     app = QApplication.instance() or QApplication([])
     settings = Settings()
+    # Every test gets a throw-away home directory, so the first-run welcome
+    # dialog would pop up (modal, unanswerable) in every single test.
+    settings.first_run_done = True
     context = AppContext(settings, ScriptStore())
     apply_stylesheet(app, context.palette)
     yield app, context

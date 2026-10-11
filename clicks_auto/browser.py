@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -10,7 +11,30 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
-from .paths import default_user_data_dir, profiles_dir
+from .paths import default_user_data_dir, playwright_browsers_dir, profiles_dir
+
+
+def playwright_browsers_path() -> Path:
+    """Where Playwright looks for its downloaded browsers.
+
+    ``PLAYWRIGHT_BROWSERS_PATH=0`` means "next to the playwright package", which
+    is read only inside a frozen build - in that case fall back to our own
+    writable folder.
+    """
+    override = os.environ.get("PLAYWRIGHT_BROWSERS_PATH", "")
+    if override and override != "0":
+        return Path(override)
+    if override == "0":
+        try:
+            import playwright
+
+            return Path(playwright.__file__).parent / "driver" / "package" / ".local-browsers"
+        except Exception:
+            return playwright_browsers_dir()
+    local = os.environ.get("LOCALAPPDATA")
+    if local:
+        return Path(local) / "ms-playwright"
+    return Path.home() / ".cache" / "ms-playwright" if sys.platform != "win32" else Path.home() / "ms-playwright"
 
 # --------------------------------------------------------------------------
 # Discovery
@@ -89,6 +113,15 @@ def _registry_app_path(exe_name: str) -> str:
     return ""
 
 
+def _small_shm(limit_mb: int = 128) -> bool:
+    """True when /dev/shm is too small for Chromium's defaults (Linux only)."""
+    try:
+        stats = os.statvfs("/dev/shm")
+        return stats.f_frsize * stats.f_blocks < limit_mb * 1024 * 1024
+    except (OSError, AttributeError, ValueError):
+        return False
+
+
 def _candidates_for(kind: str) -> list[tuple[str, str]]:
     """Return (path, source-description) guesses for a browser kind."""
     out: list[tuple[str, str]] = []
@@ -123,7 +156,7 @@ def _candidates_for(kind: str) -> list[tuple[str, str]]:
             out.append((which, "PATH"))
     elif kind == "chromium":
         # Playwright's own downloaded build
-        cache = Path(os.environ.get("PLAYWRIGHT_BROWSERS_PATH") or (Path(os.environ.get("LOCALAPPDATA", Path.home())) / "ms-playwright"))
+        cache = playwright_browsers_path()
         if cache.exists():
             for folder in sorted(cache.glob("chromium-*"), reverse=True):
                 for rel in (["chrome-win", "chrome.exe"], ["chrome-linux", "chrome"], ["chrome-mac", "Chromium.app", "Contents", "MacOS", "Chromium"]):
@@ -290,6 +323,15 @@ class BrowserSession:
             Path(self.request.download_dir).mkdir(parents=True, exist_ok=True)
             args.append(f"--download-directory={self.request.download_dir}")
         args.extend(a for a in self.request.extra_args if a)
+        if sys.platform.startswith("linux") and _small_shm():
+            # Containers and CI images often ship a 64 MB /dev/shm, which makes
+            # Chromium crash its renderer mid run.
+            args.append("--disable-dev-shm-usage")
+        # Escape hatch for unusual hosts (containers, hardened desktops, CI):
+        #   set CLICKS_AUTO_BROWSER_ARGS="--single-process --disable-dev-shm-usage"
+        extra = os.environ.get("CLICKS_AUTO_BROWSER_ARGS", "").strip()
+        if extra:
+            args.extend(part for part in shlex.split(extra) if part)
         return args
 
     # ----------------------------------------------------------------- launch
@@ -404,22 +446,51 @@ def _friendly_launch_error(message: str, executable: Optional[str]) -> str:
 
 
 def playwright_browsers_installed() -> bool:
-    cache = Path(os.environ.get("PLAYWRIGHT_BROWSERS_PATH") or (Path(os.environ.get("LOCALAPPDATA", Path.home())) / "ms-playwright"))
-    return any(cache.glob("chromium-*/**/chrome.exe"))
+    cache = playwright_browsers_path()
+    return any(cache.glob("chromium-*/**/chrome.exe")) or any(cache.glob("chromium-*/**/chrome"))
 
 
 def install_playwright_chromium(log=None) -> int:
-    """Run ``playwright install chromium`` (used by Settings -> Browser)."""
+    """Download Playwright's Chromium build (Settings -> Browser).
+
+    Works from source *and* from the frozen portable build (where the bundled
+    node binary + CLI are used directly, because ``python -m playwright`` is not
+    available inside a PyInstaller bundle).
+    """
     logger = log or (lambda *_: None)
     env = dict(os.environ)
-    env.setdefault("PLAYWRIGHT_BROWSERS_PATH", "0")
-    command = [sys.executable, "-m", "playwright", "install", "chromium"]
-    logger("Downloading Chromium for Playwright... this can take a few minutes.")
-    proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
+    target = playwright_browsers_dir()
+    target.mkdir(parents=True, exist_ok=True)
+    env["PLAYWRIGHT_BROWSERS_PATH"] = str(target)
+    env.setdefault("PYTHONUTF8", "1")
+
+    command: list[str] = []
+    if getattr(sys, "frozen", False):
+        from .paths import resource_path
+
+        node = resource_path("playwright", "driver", "node.exe" if sys.platform == "win32" else "node")
+        cli = resource_path("playwright", "driver", "package", "cli.js")
+        if node.exists() and cli.exists():
+            command = [str(node), str(cli), "install", "chromium"]
+        else:
+            logger("The bundled Playwright driver was not found in this build.")
+            return 1
+    else:
+        command = [sys.executable, "-m", "playwright", "install", "chromium"]
+
+    logger(f"Downloading Chromium into {target} - this can take a few minutes.")
+    try:
+        proc = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                text=True, env=env, cwd=str(target))
+    except OSError as exc:
+        logger(f"Could not start the downloader: {exc}")
+        return 1
     assert proc.stdout is not None
     for line in proc.stdout:
         logger(line.rstrip())
-    return proc.wait()
+    code = proc.wait()
+    logger("Done." if code == 0 else f"Downloader exited with code {code}.")
+    return code
 
 
 def available_profiles(kind: str) -> list[tuple[str, str]]:

@@ -59,6 +59,28 @@ def merge_type_chunks(events: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
+# Input types whose value is text we can replay with fill()/type().  Everything
+# else (checkbox, radio, file, submit, range, colour) fires input/change events
+# as well, but turning those into "type 'on'" steps produces scripts that can
+# never be replayed.
+TEXT_INPUT_TYPES = {
+    "", "text", "search", "email", "url", "tel", "password", "number",
+    "date", "datetime-local", "month", "week", "time",
+}
+
+
+def _is_text_entry(el: dict[str, Any] | None) -> bool:
+    el = el or {}
+    tag = str(el.get("tag") or "").lower()
+    if tag == "textarea":
+        return True
+    if el.get("is_contenteditable") or el.get("contenteditable"):
+        return True
+    if tag != "input":
+        return False
+    return str(el.get("type") or "").lower() in TEXT_INPUT_TYPES
+
+
 def _same_element(a: dict[str, Any], b: dict[str, Any]) -> bool:
     ea, eb = a.get("el") or {}, b.get("el") or {}
     if ea.get("id") and ea.get("id") == eb.get("id"):
@@ -155,6 +177,8 @@ class ActionBuilder:
         value = str(pending.get("value", ""))
         el = pending.get("el") or {}
         if value == "" and not pending.get("is_contenteditable"):
+            return None
+        if not _is_text_entry(el) and not pending.get("is_contenteditable"):
             return None
         step = self._step_from_element(el)
         step.type = "type" if self.options.typing_mode == "keystrokes" else "fill"
@@ -255,6 +279,8 @@ class ActionBuilder:
         }
 
     def _on_type(self, event: dict[str, Any]) -> None:
+        if not _is_text_entry(event.get("el")) and not event.get("is_contenteditable"):
+            return
         if not self.options.merge_typing:
             self._pending_typing = {
                 "el": event.get("el"),
@@ -276,6 +302,8 @@ class ActionBuilder:
         }
 
     def _on_type_chunk(self, event: dict[str, Any]) -> None:
+        if not _is_text_entry(event.get("el")) and not event.get("is_contenteditable"):
+            return
         pending = self._pending_typing
         if pending and _same_element(pending, event):
             pending["value"] = event.get("value", pending.get("value"))
