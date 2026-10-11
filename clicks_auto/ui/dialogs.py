@@ -476,7 +476,7 @@ class ScriptPickerDialog(AnimatedDialog):
 class WelcomeDialog(AnimatedDialog):
     def __init__(self, parent: Optional[QWidget] = None, *, palette: Palette) -> None:
         super().__init__(parent, title=f"Welcome to {APP_NAME}", width=660, height=520, palette=palette)
-        layout = QVBoxLayout(self)
+        layout = self.cards_layout = QVBoxLayout(self)
         layout.setContentsMargins(26, 24, 26, 20)
         layout.setSpacing(14)
         # ``QWidget.layout`` is a method, so keep our own reference for the
@@ -535,8 +535,8 @@ class WelcomeDialog(AnimatedDialog):
 
     def showEvent(self, event) -> None:  # noqa: N802
         super().showEvent(event)
-        body = self._body_layout
-        cards = [body.itemAt(i).widget() for i in range(body.count())]
+        layout = self.cards_layout
+        cards = [layout.itemAt(i).widget() for i in range(layout.count())]
         stagger([w for w in cards if w is not None][:8], step=55, duration=280)
 
 

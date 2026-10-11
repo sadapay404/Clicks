@@ -20,6 +20,10 @@ concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   # ---------------------------------------------------------------- unit tests
   test-linux:
@@ -43,10 +47,46 @@ jobs:
           pip install -r requirements-dev.txt
       - name: Install Playwright Chromium
         run: python -m playwright install chromium
-      - name: Run tests
+      # Split into named steps: when a job fails, the failing step name already
+      # tells us which group broke, even without reading the raw log.
+      - name: Unit tests
         env:
           QT_QPA_PLATFORM: offscreen
-        run: python -m pytest -q --timeout=600
+        run: |
+          mkdir -p ci-logs test-results
+          python -m pytest -q --timeout=600 --junitxml=test-results/unit.xml \
+            tests/test_models.py tests/test_builder.py tests/test_store_datafeed_history.py \
+            tests/test_engine.py tests/test_scheduler.py 2>&1 | tee ci-logs/unit.log
+
+      - name: GUI smoke tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          mkdir -p ci-logs test-results
+          python -m pytest -q --timeout=600 --junitxml=test-results/gui.xml \
+            tests/test_gui_smoke.py 2>&1 | tee ci-logs/gui.log
+
+      - name: Browser integration tests
+        run: |
+          mkdir -p ci-logs test-results
+          python -m pytest -q --timeout=900 --junitxml=test-results/browser.xml -m browser \
+            tests/test_browser_flow.py 2>&1 | tee ci-logs/browser.log
+
+      - name: Report failures to the tracking issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python packaging/ci_report.py --logs ci-logs --reports test-results
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-linux
+          path: |
+            test-results/
+            ci-logs/
+          if-no-files-found: ignore
 
   # ------------------------------------------------- windows: tests + package
   windows:
@@ -70,8 +110,43 @@ jobs:
       - name: Show detected browsers
         run: python -m clicks_auto browsers
 
-      - name: Run tests
-        run: python -m pytest -q --timeout=900
+      - name: Unit tests
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path ci-logs, test-results | Out-Null
+          python -m pytest -q --timeout=600 --junitxml=test-results/unit.xml `
+            tests/test_models.py tests/test_builder.py tests/test_store_datafeed_history.py `
+            tests/test_engine.py tests/test_scheduler.py 2>&1 | Tee-Object -FilePath ci-logs/unit.log
+
+      - name: GUI smoke tests
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path ci-logs, test-results | Out-Null
+          python -m pytest -q --timeout=600 --junitxml=test-results/gui.xml `
+            tests/test_gui_smoke.py 2>&1 | Tee-Object -FilePath ci-logs/gui.log
+
+      - name: Browser integration tests
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path ci-logs, test-results | Out-Null
+          python -m pytest -q --timeout=900 --junitxml=test-results/browser.xml -m browser `
+            tests/test_browser_flow.py 2>&1 | Tee-Object -FilePath ci-logs/browser.log
+
+      - name: Report failures to the tracking issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python packaging/ci_report.py --logs ci-logs --reports test-results
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-windows
+          path: |
+            test-results/
+            ci-logs/
+          if-no-files-found: ignore
 
       - name: Generate icons
         run: python packaging/make_icons.py

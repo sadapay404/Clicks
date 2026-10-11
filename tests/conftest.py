@@ -88,7 +88,8 @@ def gui_app(tmp_home, monkeypatch):
     app = QApplication.instance() or QApplication([])
     _QT_APP = app
     settings = Settings()
-    # First run dialogs are modal; keep the smoke tests free of them.
+    # Every test gets a throw-away home directory, so the first-run welcome
+    # dialog would pop up (modal, unanswerable) in every single test.
     settings.first_run_done = True
     context = AppContext(settings, ScriptStore())
     apply_stylesheet(app, context.palette)

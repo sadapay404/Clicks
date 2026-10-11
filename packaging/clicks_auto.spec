@@ -32,6 +32,7 @@ datas = [
 ]
 
 # Playwright: the driver folder (node + JS) is data, not Python modules.
+playwright_dir: Path | None = None
 try:
     import playwright
 
@@ -60,10 +61,10 @@ for module in ("winreg",):
         hiddenimports.append(module)
 
 binaries = []
-if sys.platform != "win32":
+if sys.platform != "win32" and playwright_dir is not None:
     # Keep the bundled node binary executable on Linux/macOS (used for dev builds).
-    node = Path(playwright.__file__).parent / "driver" / "node" if "playwright" in sys.modules else None
-    if node and node.exists():
+    node = playwright_dir / "driver" / "node"
+    if node.exists():
         binaries.append((str(node), "playwright/driver"))
 
 excludes = [

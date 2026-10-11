@@ -74,6 +74,11 @@ def schedules_file() -> Path:
     return app_data_dir() / "schedules.json"
 
 
+def playwright_browsers_dir() -> Path:
+    """Writable folder for a Chromium downloaded by the user at run time."""
+    return sub_dir("ms-playwright")
+
+
 def default_user_data_dir() -> Path:
     """Isolated browser profile used by automations (keeps logins separate)."""
     return sub_dir("browser-profiles", "default")

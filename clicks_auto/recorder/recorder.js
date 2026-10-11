@@ -379,6 +379,7 @@
       href: (el.href && typeof el.href === "string" && el.href.indexOf("javascript:") !== 0) ? el.href : "",
       target: el.getAttribute ? el.getAttribute("target") || "" : "",
       value: "value" in el ? String(el.value || "").slice(0, 400) : "",
+      contenteditable: el.isContentEditable === true,
     };
   };
 
@@ -501,16 +502,31 @@
     if (value !== "" || payload.el.is_contenteditable) send(payload);
   };
 
+  // Inputs that carry text we can replay with fill()/type().  Everything else
+  // (checkboxes, radios, files, buttons, selects, range/colour sliders) fires
+  // input/change events too, but recording them as typing produces steps like
+  // "type 'on' into I agree to the terms" which cannot be replayed.
+  const TEXT_INPUT_TYPES = ["", "text", "search", "email", "url", "tel", "password",
+    "number", "date", "datetime-local", "month", "week", "time"];
+
+  const isTextEntry = (el) => {
+    if (!el || el.nodeType !== 1) return false;
+    if (el.isContentEditable === true) return true;
+    if (el.tagName === "TEXTAREA") return true;
+    if (el.tagName !== "INPUT") return false;
+    const type = (el.getAttribute("type") || "text").toLowerCase();
+    return TEXT_INPUT_TYPES.indexOf(type) >= 0;
+  };
+
   const onInput = (event) => {
     if (!STATE.enabled) return;
     const el = event.target;
-    if (!el || el.nodeType !== 1) return;
-    if (el.tagName === "SELECT") return;
+    if (!isTextEntry(el)) return;
     const info = describe(el);
     const editable = `${el.isContentEditable}` === "true";
     const value = "value" in el && !editable ? String(el.value || "") : clean(el.innerText || el.textContent || "");
     STATE.typing = true;
-    STATE.pendingText = { el: info, editable };
+    STATE.pendingText = { el: info, editable, node: el };
     if (STATE.typingMode === "keystrokes") {
       // Send incremental keystroke batches so playback reproduces real typing.
       send({ kind: "type_chunk", el: info, value, is_contenteditable: editable, typing_delay_ms: STATE.typingDelayMs });
@@ -525,12 +541,16 @@
   const onBlur = (event) => {
     if (!STATE.enabled) return;
     const el = event.target;
-    if (el && el.nodeType === 1 && STATE.typing) {
-      try {
-        flushTyping(describe(el), el);
-      } catch (e) {
-        flushTyping(null, el);
-      }
+    if (!el || el.nodeType !== 1 || !STATE.typing) return;
+    // Only the field that is actually being typed into may flush the buffer -
+    // tabbing away from a checkbox must not turn pending text into a step.
+    if (!isTextEntry(el)) return;
+    const pendingNode = STATE.pendingText && STATE.pendingText.node;
+    if (pendingNode && pendingNode !== el) return;
+    try {
+      flushTyping(describe(el), el);
+    } catch (e) {
+      flushTyping(null, el);
     }
   };
 
