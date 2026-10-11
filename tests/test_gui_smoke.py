@@ -156,3 +156,37 @@ def test_toast_manager_shows_notifications(window):
     window.toasts.success("hello from the test suite")
     window.toasts.error("and an error", title="Uh oh")
     assert len(window.toasts.toasts) == 2
+
+
+def test_welcome_dialog_builds(gui_app):
+    """The first run dialog must build (it is shown 120 ms after startup)."""
+    app, context = gui_app
+    from clicks_auto.ui.dialogs import WelcomeDialog
+
+    dialog = WelcomeDialog(None, palette=context.palette)
+    dialog.show()
+    app.processEvents()
+    assert dialog.width() > 300 and dialog.height() > 300
+    dialog.close()
+
+
+def test_first_run_welcome_cannot_block_the_self_test(gui_app):
+    """``--self-test`` disables the modal dialog, which would otherwise hang CI."""
+    app, context = gui_app
+    from PyQt6.QtWidgets import QApplication, QDialog
+
+    from clicks_auto.ui.main_window import MainWindow
+
+    context.settings.first_run_done = False
+    window = MainWindow(context)
+    window.allow_welcome = False
+    window.show()
+    app.processEvents()
+    window._welcome_if_needed()  # must return immediately
+    visible_dialogs = [w for w in QApplication.topLevelWidgets()
+                       if isinstance(w, QDialog) and w.isVisible()]
+    assert visible_dialogs == []
+    assert context.settings.first_run_done is False, "the mark is only set when the dialog is shown"
+    window.scheduler.stop()
+    window.close()
+    app.processEvents()

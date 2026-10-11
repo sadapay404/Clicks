@@ -117,6 +117,10 @@ def run_gui(argv: Optional[list[str]] = None) -> int:
     window = MainWindow(context)
 
     self_test = "--self-test" in argv
+    if self_test:
+        # The self check must never wait for a human: a modal first run dialog
+        # would keep the frozen exe alive forever on CI.
+        window.allow_welcome = False
     splash = None if self_test else (SplashScreen() if settings.ui.animations else None)
     if splash is not None:
         splash.show_animated()
@@ -176,7 +180,21 @@ def _run_self_test(app, window, context) -> None:
     sys.stdout.flush()
     if window.recorder_page.busy():
         window.recorder_page.shutdown()
-    app.exit(0 if ok else 1)
+    # Close anything still open (dialogs, menus) so nothing can keep a nested
+    # event loop alive after we ask the application to quit.
+    for widget in app.topLevelWidgets():
+        try:
+            if widget is not window and widget.isVisible():
+                widget.close()
+        except RuntimeError:
+            continue
+    code = 0 if ok else 1
+    # Watchdog: if some modal loop swallows the exit, leave anyway.  The report
+    # is already on disk, which is what CI reads.
+    from PyQt6.QtCore import QTimer
+
+    QTimer.singleShot(8000, lambda: os._exit(code))
+    app.exit(code)
 
 
 def context_palette(settings):
