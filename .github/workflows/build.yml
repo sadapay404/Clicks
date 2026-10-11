@@ -165,7 +165,8 @@ jobs:
         shell: pwsh
         run: |
           $env:CLICKS_AUTO_HOME = "$env:RUNNER_TEMP\clicks-self-test"
-          $proc = Start-Process -FilePath ".\dist\Clicks-Auto\Clicks-Auto.exe" -ArgumentList "--self-test" -PassThru -Wait
+          $proc = Start-Process -FilePath ".\dist\Clicks-Auto\Clicks-Auto.exe" -ArgumentList "--self-test" -PassThru
+          if (-not $proc.WaitForExit(300000)) { $proc.Kill(); throw "GUI self test did not exit within 5 minutes" }
           $report = Join-Path $env:CLICKS_AUTO_HOME "self-test-report.txt"
           if (Test-Path $report) { Get-Content $report }
           if ($proc.ExitCode -ne 0) { throw "GUI self test failed with exit code $($proc.ExitCode)" }

@@ -176,9 +176,25 @@ def _run_self_test(app, window, context) -> None:
     except Exception:
         pass
     sys.stdout.flush()
-    if window.recorder_page.busy():
-        window.recorder_page.shutdown()
-    app.exit(0 if ok else 1)
+    code = 0 if ok else 1
+    # Close anything still open (dialogs, menus) - a nested event loop would
+    # swallow the exit and keep the frozen exe (and CI) alive.
+    for widget in app.topLevelWidgets():
+        try:
+            if widget is not window and widget.isVisible():
+                widget.close()
+        except RuntimeError:
+            continue
+    try:
+        window.shutdown()
+    except Exception:
+        pass
+    # Watchdog: the report is on disk already, which is what CI reads, so leave
+    # even if something insists on staying alive.
+    from PyQt6.QtCore import QTimer
+
+    QTimer.singleShot(8000, lambda: os._exit(code))
+    app.exit(code)
 
 
 def context_palette(settings):
