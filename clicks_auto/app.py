@@ -150,34 +150,63 @@ def _run_self_test(app, window, context) -> None:
         window.show_page("run")
         window.run_page.refresh_library()
         entries = context.store.list_entries()
-        if entries:
+        if not entries:
+            ok = False
+            report.append("example script missing")
+        else:
             window.run_page.load_script(entries[0].path)
             window.run_page.start_run(dry_run=True)
             worker = window.run_page.worker
-            deadline = 30_000
-            waited = 0
-            while worker is not None and worker.isRunning() and waited < deadline:
+            deadline_ms = 30_000
+            waited_ms = 0
+            while worker is not None and worker.isRunning() and waited_ms < deadline_ms:
                 app.processEvents()
                 worker.wait(120)
-                waited += 120
-            report.append(f"dry run finished: {'yes' if worker and not worker.isRunning() else 'TIMEOUT'}")
-        window.toasts.success("Self test finished")
-        app.processEvents()
-        report.append("toasts: ok")
+                waited_ms += 120
+            if worker is None or worker.isRunning():
+                ok = False
+                report.append("dry run timed out after 30 seconds")
+            else:
+                result = getattr(worker, "result", None)
+                if result is None:
+                    ok = False
+                    report.append("dry run result missing")
+                elif getattr(result, "outcome", "") != "completed":
+                    ok = False
+                    report.append(f"dry run outcome: {getattr(result, 'outcome', 'unknown')}")
+                else:
+                    report.append("dry run finished: yes")
+        if ok:
+            window.toasts.success("Self test finished")
+            app.processEvents()
+            report.append("toasts: ok")
     except Exception:
         ok = False
         report.append("EXCEPTION:\n" + traceback.format_exc())
+
+    # app.exit() does not send QMainWindow.closeEvent. Stop and join every
+    # background worker explicitly before Qt tears down the packaged UI.
+    try:
+        window.shutdown()
+        report.append("window shutdown: ok")
+    except Exception:
+        ok = False
+        report.append("window shutdown failed:\n" + traceback.format_exc())
 
     message = "\n".join(["Clicks-Auto self test", f"result: {'PASS' if ok else 'FAIL'}", *report])
     try:
         marker = app_data_dir() / "self-test-report.txt"
         marker.write_text(message, encoding="utf-8")
-        print(message)
     except Exception:
         pass
-    sys.stdout.flush()
-    if window.recorder_page.busy():
-        window.recorder_page.shutdown()
+    # PyInstaller's --windowed executable can have sys.stdout=None on Windows.
+    stdout = getattr(sys, "stdout", None)
+    if stdout is not None:
+        try:
+            stdout.write(message + "\n")
+            stdout.flush()
+        except Exception:
+            pass
     app.exit(0 if ok else 1)
 
 

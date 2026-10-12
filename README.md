@@ -42,6 +42,8 @@ Press **Record Session** and a dedicated test browser opens. Everything you do i
 * Enter/Tab/shortcut keys, uploads and alert/confirm dialogs,
 * optional: scrolling, hovering and your natural "thinking pauses" as wait steps.
 
+> **Password privacy:** For one-click replay, recorded password values are saved in the script JSON. They are marked sensitive so playback logs mask them, but the JSON is plain text. Keep scripts private; replace the value with `${password}` or use a data file if you do not want the credential stored in the script.
+
 Each captured element comes with **ranked selector candidates**: `data-testid`, `id`,
 `aria-label`/`<label>`, accessibility role + name, `name`, placeholder, visible text, a unique CSS
 path and an XPath fallback. During playback the engine walks that list, so small site changes do not

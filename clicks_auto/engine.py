@@ -229,8 +229,12 @@ class AutomationEngine:
             else:
                 self._run_loops(max(1, int(request.loop_count)))
         except StopRequested:
-            stop_reason = "stopped"
-            self.on_log("warn", "Stop requested - shutting the browser down.")
+            if self.result.outcome == "failed":
+                stop_reason = "failed"
+                self.on_log("error", "Playback stopped because 'stop on error' is enabled.")
+            else:
+                stop_reason = "stopped"
+                self.on_log("warn", "Stop requested - shutting the browser down.")
         except BrowserError as exc:
             self.on_log("error", str(exc))
             self.result.errors.append(str(exc))
@@ -242,7 +246,7 @@ class AutomationEngine:
         finally:
             self._shutdown_browser()
 
-        return self._finish(stop_reason, stopped=self.result.stopped_by_user)
+        return self._finish(stop_reason, stopped=self.stopped)
 
     # ------------------------------------------------------------------ loops
     def _run_loops(self, total: Optional[int]) -> None:
@@ -498,18 +502,19 @@ class AutomationEngine:
     def _shutdown_browser(self) -> None:
         if self.session is None:
             return
-        keep_open = self.request.keep_browser_open
+        keep_open = bool(self.request.keep_browser_open)
         if not self.request.close_browser_when_done:
             keep_open = True
-        if self.stopped and self.request.close_browser_when_done:
+        if self.request.close_browser_when_done or self.stopped:
             keep_open = False
+
+        # Keep the live Playwright session and references on the engine. Its
+        # worker thread must continue owning the driver until the user closes it.
+        if keep_open:
+            self.on_log("info", "Leaving the browser window open.")
+            return
+
         try:
-            if keep_open and not self.stopped:
-                self.on_log("info", "Leaving the browser window open.")
-                # Playwright must keep running for the browser to stay alive, so
-                # we intentionally skip stop() here; the worker keeps the
-                # session object until the app closes.
-                return
             self.session.stop()
             self.on_log("info", "Browser closed.")
         except Exception as exc:  # noqa: BLE001
@@ -927,7 +932,11 @@ class AutomationEngine:
             self.result.step_results.append(result)
             if result.status == "error":
                 self.result.steps_failed += 1
+                self.result.errors.append(
+                    f"nested step {sub_index} ({sub_step.label}): {result.message}"
+                )
                 if self.request.stop_on_error:
+                    self.result.outcome = "failed"
                     raise StopRequested()
 
     def _do_go_back(self, step: Step, index: int) -> int:

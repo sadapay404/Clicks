@@ -146,6 +146,7 @@ Unknown placeholders are left untouched so mistakes are easy to spot in the cons
 * **Add checks.** `assert_text` / `assert_visible` turn silent failures into clear errors.
 * **Reuse secrets.** Store credentials as variables (or a CSV row) and mark password fills `secret`
   so they are masked in the console.
+* `secret` only masks the value in playback logs; it does not encrypt a script. Password values captured by the recorder are stored in its plain JSON file for replay.
 * **Use waits wisely.** A `wait_for` on a stable element beats a fixed `wait`.
 * **Nest with care.** `if_visible` and `repeat` keep long flows readable.
 

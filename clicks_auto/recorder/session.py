@@ -94,6 +94,8 @@ class RecorderSession:
 
     # ---------------------------------------------------------------- events
     def _on_binding(self, source: Any, payload: str) -> None:
+        if self._stop_requested:
+            return
         try:
             event = json.loads(payload)
             event.setdefault("ts", int(time.time() * 1000))
@@ -108,6 +110,8 @@ class RecorderSession:
             self.on_log("warn", f"recorder event dropped: {exc}")
 
     def _ingest(self, event: dict[str, Any]) -> None:
+        if self._stop_requested:
+            return
         steps = self.builder.handle(event)
         for step in steps:
             self._count += 1
@@ -205,9 +209,11 @@ class RecorderSession:
 
     # ------------------------------------------------------------------ pump
     def pump(self, timeout_ms: int = 200) -> None:
-        """Let Playwright dispatch pending events (call in a loop)."""
-        if self._stop_requested:
-            return
+        """Let Playwright dispatch pending events (call in a loop).
+
+        After recording stops, this still pumps a browser the user chose to
+        leave open, while late interactions are ignored by ``_ingest``.
+        """
         pages = self.session.pages()
         if not pages:
             self._mark_finished("recorder browser closed")
@@ -256,6 +262,23 @@ class RecorderSession:
         for page in self.session.pages():
             self._apply_options_to_page(page)
 
+    def _flush_pending_text(self) -> None:
+        """Flush the JavaScript input debounce before disabling capture."""
+        try:
+            pages = self.session.pages()
+        except Exception:
+            return
+        for page in pages:
+            try:
+                frames = page.frames
+            except Exception:
+                continue
+            for frame in frames:
+                try:
+                    frame.evaluate("window.__clicksAuto && window.__clicksAuto.flush()")
+                except Exception:
+                    continue
+
     def _apply_options_to_page(self, page: Any) -> None:
         payload = {
             "enabled": not self._paused,
@@ -274,11 +297,15 @@ class RecorderSession:
             pass
 
     def set_options(self, options: RecorderOptions) -> None:
+        if self._stop_requested:
+            return
         self.options = options
         self.builder.options = options
         self.apply_options()
 
     def set_paused(self, paused: bool) -> None:
+        if self._stop_requested:
+            return
         self._paused = paused
         self.on_log("info", "Recording paused" if paused else "Recording resumed")
         self.apply_options()
@@ -297,7 +324,15 @@ class RecorderSession:
         self.builder._notes.append(message)
 
     def request_stop(self) -> None:
+        if self._stop_requested:
+            return
+        # Preserve text entered just before Stop & save; the page recorder
+        # debounces input so it can emit one clean fill step.
+        self._flush_pending_text()
         self._stop_requested = True
+        self._paused = True
+        self.apply_options()
+        self._mark_finished("stopped by user")
 
     def _mark_finished(self, reason: str) -> None:
         if not self.finished:

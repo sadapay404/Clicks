@@ -17,7 +17,7 @@ First public release.
 - Ranked selector candidates per action (`data-testid`, `id`, label/aria, role+name, `name`,
   placeholder, text, unique CSS path, XPath) plus iframe frame chains.
 - Optional scrolling, hovering and "thinking pause" recording; keystroke-by-keystroke typing mode.
-- Passwords recorded as masked secret steps.
+- Password fields remain replayable in recorded scripts and are marked `secret` for log masking; values are plain text in local JSON (not encrypted).
 
 **Playback engine**
 - Loop control: repeat N times, run for a duration, or run until Stop.
@@ -53,10 +53,13 @@ First public release.
   label, the indeterminate progress shimmer and the animation helpers are also hardened against
   widgets that are torn down mid-animation.
 - `CLICKS_AUTO_BROWSER_ARGS` lets you append extra Chromium flags on unusual hosts.
+- Stop & save flushes the final debounced text field, and an optionally kept-open recorder browser can be closed from the UI.
+- A kept-open playback browser retains its live worker session until explicit close; user stops and stop-on-error failures are recorded as distinct outcomes.
 
 **Packaging & tests**
 - PyInstaller portable build (`Clicks-Auto.exe` + `clicks-auto-cli.exe`), SHA256 checksums,
   generated icons, PowerShell build script and a GitHub Actions pipeline that tests on Linux and
   Windows and publishes the release ZIP.
+- Packaged GUI self-test verifies a successful dry run, shuts down workers cleanly, has a bounded CI timeout, and uploads its diagnostic report.
 - pytest suite with unit tests, GUI smoke tests and real browser record → replay integration tests
   against a bundled local test site.

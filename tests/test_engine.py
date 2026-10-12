@@ -110,3 +110,127 @@ def test_variable_substitution_inside_engine():
     engine.variables = {"__loop__": 3}
     assert engine._sub("loop ${__loop__}") == "loop 3"
     assert engine._sub("nothing here") == "nothing here"
+
+def test_stop_on_error_is_reported_as_failure_not_user_stop():
+    script = Script(name="fail fast", steps=[Step(type="not_a_real_step")])
+    engine, _ = make_engine(script, stop_on_error=True)
+    # Keep this a unit test: the unsupported step exercises error handling, not Playwright.
+    engine._start_browser = lambda: setattr(engine, "page", object())
+
+    result = engine.run()
+
+    assert result.outcome == "failed"
+    assert result.stopped_by_user is False
+    assert result.steps_failed == 1
+    assert result.loops_completed == 0
+
+
+def test_repeat_mode_completes_exactly_the_requested_loop_count():
+    script = Script(name="counted", steps=[Step(type="note", options={"text": "tick"})])
+    engine, _ = make_engine(
+        script,
+        loop_mode="count",
+        loop_count=4,
+        delay_between_steps_ms=0,
+        delay_between_loops_ms=0,
+    )
+    engine._start_browser = lambda: setattr(engine, "page", object())
+
+    result = engine.run()
+
+    assert result.outcome == "completed"
+    assert result.loops_attempted == 4
+    assert result.loops_completed == 4
+    assert result.steps_ok == 4
+
+
+def test_infinite_mode_stop_button_is_recorded_as_user_stop():
+    script = Script(name="unlimited", steps=[Step(type="note", options={"text": "tick"})])
+    holder = {}
+
+    def stop_on_third_loop(index, _total):
+        if index == 3:
+            holder["engine"].stop()
+
+    engine = AutomationEngine(
+        RunRequest(
+            script=script,
+            loop_mode="infinite",
+            delay_between_steps_ms=0,
+            delay_between_loops_ms=0,
+        ),
+        on_loop=stop_on_third_loop,
+    )
+    holder["engine"] = engine
+    engine._start_browser = lambda: setattr(engine, "page", object())
+
+    result = engine.run()
+
+    assert result.outcome == "stopped"
+    assert result.stopped_by_user is True
+    assert result.loops_completed == 2
+
+
+def test_stop_on_error_in_repeat_block_is_reported_as_failure():
+    script = Script(name="nested fail fast", steps=[
+        Step(type="repeat", steps=[Step(type="not_a_real_step")]),
+    ])
+    engine, _ = make_engine(script, stop_on_error=True)
+    engine._start_browser = lambda: setattr(engine, "page", object())
+
+    result = engine.run()
+
+    assert result.outcome == "failed"
+    assert result.stopped_by_user is False
+    assert result.steps_failed == 1
+    assert result.errors
+
+
+def test_keep_open_browser_session_remains_available_until_explicit_close():
+    class FakeSession:
+        def __init__(self):
+            self.stop_calls = 0
+
+        def stop(self):
+            self.stop_calls += 1
+
+    script = Script(name="keep browser", steps=[Step(type="note")])
+    engine, _ = make_engine(script, keep_browser_open=True, close_browser_when_done=False)
+    session = FakeSession()
+    engine.session = session
+    engine.context = object()
+    engine.page = object()
+    engine._loop_pages = [engine.page]
+
+    engine._shutdown_browser()
+
+    assert engine.session is session
+    assert engine.context is not None
+    assert engine.page is not None
+    assert session.stop_calls == 0
+
+    engine.close_browser_now()
+    assert session.stop_calls == 1
+    assert engine.session is None
+
+
+def test_close_when_done_overrides_keep_browser_open():
+    class FakeSession:
+        def __init__(self):
+            self.stop_calls = 0
+
+        def stop(self):
+            self.stop_calls += 1
+
+    engine, _ = make_engine(
+        Script(name="close precedence", steps=[Step(type="note")]),
+        keep_browser_open=True,
+        close_browser_when_done=True,
+    )
+    session = FakeSession()
+    engine.session = session
+
+    engine._shutdown_browser()
+
+    assert session.stop_calls == 1
+    assert engine.session is None

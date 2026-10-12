@@ -162,16 +162,32 @@ jobs:
           .\dist\Clicks-Auto\clicks-auto-cli.exe validate "scripts\examples\wikipedia-search.json"
 
       - name: Smoke test the packaged build (GUI self test)
+        timeout-minutes: 3
         shell: pwsh
         run: |
           $env:CLICKS_AUTO_HOME = "$env:RUNNER_TEMP\clicks-self-test"
-          $proc = Start-Process -FilePath ".\dist\Clicks-Auto\Clicks-Auto.exe" -ArgumentList "--self-test" -PassThru -Wait
+          $proc = Start-Process -FilePath ".\dist\Clicks-Auto\Clicks-Auto.exe" -ArgumentList "--self-test" -PassThru
           $report = Join-Path $env:CLICKS_AUTO_HOME "self-test-report.txt"
+          if (-not $proc.WaitForExit(90000)) {
+            Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+            if (Test-Path $report) { Get-Content $report }
+            throw "GUI self test did not exit within 90 seconds"
+          }
+          $proc.Refresh()
           if (Test-Path $report) { Get-Content $report }
           if ($proc.ExitCode -ne 0) { throw "GUI self test failed with exit code $($proc.ExitCode)" }
           if (-not (Test-Path $report)) { throw "GUI self test did not write a report" }
           if (-not (Select-String -Path $report -Pattern "result: PASS" -Quiet)) { throw "GUI self test reported FAIL" }
           Write-Host "GUI self test passed."
+
+      - name: Upload GUI self-test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gui-self-test-report
+          path: ${{ runner.temp }}/clicks-self-test/self-test-report.txt
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Add README and zip the release
         shell: pwsh

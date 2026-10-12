@@ -44,6 +44,7 @@ class RecorderPage(ScrollPage):
         self.ctx = context
         self.worker: Optional[RecorderWorker] = None
         self.steps: list[Step] = []
+        self._browser_kept_open = False
         self._pulse = None
         self._started_at = 0.0
         self.script: Optional[Script] = None
@@ -191,6 +192,13 @@ class RecorderPage(ScrollPage):
         self.stop_button.clicked.connect(self.stop_recording)
         row.addWidget(self.stop_button)
 
+        self.close_browser_button = AnimatedButton("Close browser", kind="ghost", icon_text="\u2715")
+        self.close_browser_button.setMinimumHeight(52)
+        self.close_browser_button.setEnabled(False)
+        self.close_browser_button.setVisible(False)
+        self.close_browser_button.clicked.connect(self.close_recorder_browser)
+        row.addWidget(self.close_browser_button)
+
         row.addStretch(1)
 
         status_column = QVBoxLayout()
@@ -251,7 +259,7 @@ class RecorderPage(ScrollPage):
             ("\u231b", "Slow pages? Add a wait step, or keep the recorded pauses."),
             ("\u25c8", "Popup tabs are recorded as their own step and playback follows them."),
             ("\u26a0", "Uploads need real file paths - set them in the script editor afterwards."),
-            ("\u2713", "Passwords are stored as ${password} style secrets and masked in logs."),
+            ("\u2713", "Password values are saved in the local JSON script for replay and masked in logs; keep scripts private."),
         ):
             row = QHBoxLayout()
             row.setSpacing(8)
@@ -336,6 +344,9 @@ class RecorderPage(ScrollPage):
             return
 
         self.steps = []
+        self._browser_kept_open = False
+        self.close_browser_button.setVisible(False)
+        self.close_browser_button.setEnabled(False)
         self.script = None
         self.saved_path = None
         self.step_list.populate([])
@@ -358,7 +369,8 @@ class RecorderPage(ScrollPage):
         worker.counter.connect(self._on_counter)
         worker.recording_status.connect(self._on_recording_status)
         worker.finished_recording.connect(self._on_finished)
-        worker.session_closed.connect(lambda: self.console.log("info", "Recorder browser closed."))
+        worker.session_kept_alive.connect(self._on_session_kept_alive)
+        worker.session_closed.connect(self._on_session_closed)
         worker.failed.connect(self._on_failed)
         worker.start()
         self.worker = worker
@@ -382,7 +394,29 @@ class RecorderPage(ScrollPage):
             return
         self.console.log("info", "Finishing up and saving the recorded script...")
         self.stop_button.setEnabled(False)
+        self.pause_button.setEnabled(False)
+        self.mark_button.setEnabled(False)
         self.worker.finish_recording()
+
+    def close_recorder_browser(self) -> None:
+        if self.worker is None or not self.worker.isRunning():
+            return
+        self.close_browser_button.setEnabled(False)
+        self.worker.close_browser()
+
+    def _on_session_kept_alive(self) -> None:
+        self._browser_kept_open = True
+        self.record_button.setEnabled(False)
+        self.close_browser_button.setEnabled(True)
+        self.close_browser_button.setVisible(True)
+        self.console.log("info", "Recorder browser left open - close it when you are finished.")
+
+    def _on_session_closed(self) -> None:
+        self._browser_kept_open = False
+        self.close_browser_button.setEnabled(False)
+        self.close_browser_button.setVisible(False)
+        self.record_button.setEnabled(True)
+        self.console.log("info", "Recorder browser closed.")
 
     def toggle_pause(self) -> None:
         if self.worker is None:
@@ -445,6 +479,13 @@ class RecorderPage(ScrollPage):
             self.console.log("warn", "Recorder finished without any steps.")
             return
         self.script = script
+        # Session.finish() may flush the final debounced text field after the
+        # last live step signal; refresh the visible list from the saved script.
+        self.steps = list(script.steps)
+        self.step_list.populate(self.steps, animate=False)
+        self.steps_pill.set_level("info")
+        self.steps_pill.setText(f"{script.step_count} steps")
+        self.count_label.setText(f"{script.step_count} step(s) recorded")
         try:
             path = self.ctx.store.save(script, self.ctx.store.unique_path_for(script.name))
         except Exception as exc:  # noqa: BLE001
@@ -470,10 +511,10 @@ class RecorderPage(ScrollPage):
         self.record_button.setText("\u25cf  Record Session")
         self.record_button.setProperty("kind", "danger")
         self._repolish(self.record_button)
+        self.record_button.setEnabled(not self._browser_kept_open)
         self.pause_button.setEnabled(False)
         self.pause_button.setText("\u23f8  Pause recording")
         self.mark_button.setEnabled(False)
-        self.stop_button.setEnabled(True)
         self.stop_button.setEnabled(False)
         self.rec_indicator.setText("\u25cf  idle")
         self.rec_indicator.setStyleSheet(f"color: {self.ctx.palette.text_faint}; font-weight: 700;")

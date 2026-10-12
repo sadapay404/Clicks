@@ -152,6 +152,12 @@ class RecorderWorker(QThread):
                 self.log.emit("warn", f"recorder loop: {exc}")
                 break
         self._drain_commands()
+        try:
+            # Pump errors and external browser closure also end a recording;
+            # always turn off the injected listeners before building the script.
+            self.session.request_stop()
+        except Exception as exc:  # noqa: BLE001
+            self.log.emit("warn", f"could not stop recorder capture cleanly: {exc}")
 
         try:
             self.script = self.session.finish()
@@ -159,7 +165,11 @@ class RecorderWorker(QThread):
             self.script = Script(name=self.name)
             self.log.emit("error", f"could not build the script: {exc}")
 
-        if self.keep_browser_open and not self._abort:
+        keep_open = self.keep_browser_open and not self._abort
+        if keep_open:
+            # Deliver the finished script before waiting for the browser to be
+            # closed, so the UI can persist it immediately after Stop & save.
+            self.finished_recording.emit(self.script)
             self.session_kept_alive.emit()
             self.recording_status.emit("saved", "Script saved - browser left open")
             while not self._close_requested and not self._abort:
@@ -170,7 +180,8 @@ class RecorderWorker(QThread):
                     break
         self.session.close()
         self.session_closed.emit()
-        self.finished_recording.emit(self.script)
+        if not keep_open:
+            self.finished_recording.emit(self.script)
 
     def _drain_commands(self) -> None:
         while True:
@@ -230,7 +241,11 @@ class RecorderWorker(QThread):
 
     @property
     def browser_open(self) -> bool:
-        return bool(self.session is not None and not self.session.finished)
+        return bool(
+            self.session is not None
+            and self.session.session is not None
+            and self.session.session.is_running
+        )
 
 
 class BrowserProbe(QThread):

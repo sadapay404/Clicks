@@ -62,6 +62,8 @@ A slower, friendlier walkthrough than the README.
 | Navigation, SPA route changes, popup tabs, tab switches | |
 | Alert / confirm dialogs (auto-accepted by default) | |
 
+**Password privacy:** To preserve one-click replay, values typed into password fields are saved in the local JSON script. They are marked `secret` so playback logs mask them, but this is not encryption. Keep those scripts private, or replace the value with a variable such as `${password}` / a data-file column before sharing or running elsewhere.
+
 ---
 
 ## 3. Editing the script
