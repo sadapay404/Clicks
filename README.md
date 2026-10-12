@@ -18,8 +18,8 @@ Grab the latest portable build from the [releases page](../../releases/latest):
 
 | File | What it is |
 | --- | --- |
-| `Clicks-Auto-1.0.0-win64.zip` | Portable build - unzip anywhere, run `Clicks-Auto.exe` |
-| `Clicks-Auto-1.0.0-win64.zip.sha256` | Checksum you can verify with `certutil -hashfile <file> SHA256` |
+| `Clicks-Auto-1.0.1-win64.zip` | Portable build - unzip anywhere, run `Clicks-Auto.exe` |
+| `Clicks-Auto-1.0.1-win64.zip.sha256` | Checksum you can verify with `certutil -hashfile <file> SHA256` |
 
 Requirements: Windows 10/11 (x64) and any Chromium based browser - **Brave (recommended)**,
 Google Chrome or Microsoft Edge. No browser installed? Settings → Browser can download

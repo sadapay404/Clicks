@@ -4,6 +4,17 @@ All notable changes to Clicks-Auto are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/) and
 [Semantic Versioning](https://semver.org/).
 
+## [1.0.1] - 2026-10-12
+
+### Fixed
+- Stop & save flushes the final debounced text value, persists the editable script promptly, and exposes an explicit close control for a kept-open recorder browser.
+- Playback retains the browser worker session when configured, closes cleanly on request, and reports user Stop separately from stop-on-error failure.
+- Exact-count, continuous, and nested playback failures now have regression coverage and accurate outcome reporting.
+- The packaged Windows GUI self-test requires a successful dry-run result, joins workers before exit, handles windowed `stdout=None`, has a bounded CI timeout, and uploads diagnostics.
+
+### Packaging
+- Align the application, Windows file metadata, portable build defaults, documentation, and release workflow on version 1.0.1.
+
 ## [1.0.0] - 2026-10-11
 
 First public release.

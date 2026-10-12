@@ -682,3 +682,81 @@ SKIPPED [1] tests/test_browser_flow.py:189: no Chromium based browser available 
 - Created the implementation commit on `arena/fd20cbb9-clicks`; amended it once to include this post-commit progress record. The final commit hash is available from `git rev-parse HEAD`.
 - The source/tests/docs/workflow and progress log are committed; no Windows CI result exists for this commit yet.
 - **Next:** push this branch only, monitor its build and GUI self-test, diagnose any failure, and dispatch the v1.0.0 release only after all required checks pass.
+
+### Activity update — branch push
+- Successfully pushed implementation commit `8ad4432` to the required branch `arena/fd20cbb9-clicks`; no other branch or tag was pushed.
+- Windows/Linux Actions validation is now expected to run for this source commit. No release has been created.
+- **Next:** locate and monitor the new GitHub Actions run; fix any failure on this branch and do not publish unless the Windows package and GUI self-test pass.
+
+### Activity update — branch CI and release provenance
+- Pushed implementation commit `8ad4432` to `arena/fd20cbb9-clicks`; Actions run [38190367231](https://github.com/sadapay404/Clicks/actions/runs/38190367231) completed successfully on 2026-10-12.
+- Both jobs passed: Linux unit/GUI/browser tests and Windows unit/GUI/browser tests, PyInstaller package, packaged CLI and GUI self-tests, ZIP/checksum creation, and artifact upload. The Windows build artifact was 82,848,258 bytes; the GUI self-test report was uploaded (285 bytes).
+- A `v1.0.0` pre-release already exists at [the release page](https://github.com/sadapay404/Clicks/releases/tag/v1.0.0), with a Windows ZIP (83,135,208 bytes) and SHA256 asset. It was produced by successful run [38146749507](https://github.com/sadapay404/Clicks/actions/runs/38146749507), whose Linux, Windows, GUI self-test, packaging, and release jobs all passed.
+- The existing annotated `v1.0.0` tag targets commit `2543a21`; this branch's validated build was from `8ad4432`. No existing release asset or tag was changed.
+- **Next:** honor the user's selected v1.0.1 path, bump product-facing versions on this branch, verify fresh CI, then publish a new release without touching v1.0.0.
+
+### Activity update — release decision requested
+- The active-branch commit `8ad4432` passed Actions run `38190367231`: Linux and Windows jobs both succeeded, including GUI smoke tests, browser integration, PyInstaller packaging, packaged GUI self-test, and ZIP/checksum artifact upload.
+- A downloadable GitHub pre-release `v1.0.0` already exists with ZIP and SHA256 assets, created from a different commit (`2543a21`) by successful run `38146749507`. The current branch's validated build is not yet attached to that release.
+- No release assets or tags have been overwritten or moved. **Next:** get the user's preference on leaving the existing pre-release intact, updating it, or creating a new version from this branch; then finish the release path accordingly.
+
+### Activity update — user selected v1.0.1
+- User chose to leave the existing `v1.0.0` pre-release untouched and publish the current code as a new `v1.0.1` release.
+- **Next:** find every application/build/changelog version reference, bump to 1.0.1 on `arena/fd20cbb9-clicks`, rerun local checks, commit/push, verify the new Windows CI pass, and dispatch `v1.0.1` only after it succeeds.
+
+### Activity update — v1.0.1 version-surface audit
+- Located application, PyInstaller metadata, PowerShell build default, README/user-guide asset references, changelog heading, and GitHub Actions workflow defaults that must align on 1.0.1.
+- Historical 1.0.0 provenance in `progress.md` will remain historical; product-facing current-version references will be updated, and the prior changelog section retained.
+- **Next:** bump version metadata and add a focused 1.0.1 changelog entry, then search all non-progress files for stale version strings and rerun the tests/CLI checks.
+
+### Activity update — version bumped to 1.0.1
+- Updated the application version, Windows resource metadata, PyInstaller/build defaults, README/user-guide download names, and workflow-dispatch defaults to 1.0.1. Added the 1.0.1 changelog section while preserving 1.0.0 history.
+- A first scripted edit stopped when the README checksum filename matched the ZIP prefix; corrected the replacement pattern, verified all intended files, and no files outside this version surface were affected.
+- **Next:** search for stale product-facing 1.0.0 references, inspect the diff, run the full feasible suite and CLI/version checks, then commit/push and require fresh Windows CI before release dispatch.
+
+### Activity update — version surface review
+- Searched all non-progress project files: current product/build references now point to 1.0.1; the only intended 1.0.0 reference is the retained historical changelog section.
+- Reviewed app version, Windows file resource, build defaults, user-facing download/checksum filenames, workflow dispatch default, and the new changelog entry.
+- **Next:** run the full locally feasible suite plus CLI/version/example and static checks, then commit/push the 1.0.1 bump and verify its fresh Windows CI.
+
+### Activity update — v1.0.1 local verification
+- Full feasible suite exit=0; compileall=0; diff-check=0; CLI version=0; example validation=0.
+```text
+...sssss................................................................ [ 70%]
+..............................                                           [100%]
+=========================== short test summary info ============================
+SKIPPED [1] tests/test_browser_flow.py:62: no Chromium based browser available in this environment
+SKIPPED [1] tests/test_browser_flow.py:86: no Chromium based browser available in this environment
+SKIPPED [1] tests/test_browser_flow.py:107: no Chromium based browser available in this environment
+SKIPPED [1] tests/test_browser_flow.py:127: no Chromium based browser available in this environment
+SKIPPED [1] tests/test_browser_flow.py:189: no Chromium based browser available in this environment
+97 passed, 5 skipped in 0.35s
+```
+- CLI reports version 1.0.1 and the bundled Wikipedia example validates. GUI smoke and real Chromium browser coverage will run in GitHub Actions.
+- **Next:** commit and push the version bump, monitor the new run, and dispatch the v1.0.1 release only if the current commit passes full Windows packaging/self-test.
+
+### Activity update — v1.0.1 commit readiness
+- Version-bump whitespace check exit=0.
+- All local tests and version/CLI/example checks passed; pending changes are limited to the 1.0.1 metadata, docs, changelog, workflow defaults, and progress log.
+- **Next:** commit the 1.0.1 version bump on the required branch, push, and wait for a new full Actions run before release dispatch.
+
+### Activity update — progress log cleanup plan
+- CI and GitHub release queries were preserved verbatim in the progress log, making it unnecessarily large; I will replace the raw repeated output with concise status, IDs, URLs, and artifact/provenance facts while retaining the plan and decisions.
+- **Next:** compress those machine-output sections before committing the 1.0.1 version change; no source changes are involved.
+
+### Activity update — progress cleanup inspection
+- Identified the oversized entry: repeated `gh run watch` refresh output between the Actions-run headings; the release API JSON body is also more detailed than the cumulative log needs.
+- **Next:** replace these blocks with concise CI and release metadata summaries, then rerun the whitespace check.
+
+### Activity update — progress log compressed
+- Replaced repeated `gh run watch` output and large API JSON payloads with concise run, status, artifact, release, and tag provenance details. Retained the decision history and next steps.
+- **Next:** rerun `git diff --check` and commit the prepared 1.0.1 version bump.
+
+### Activity update — v1.0.1 version commit
+- Preparing the version-only follow-up commit with application and Windows file versions, build/release defaults, updated download instructions, 1.0.1 changelog, and concise CI/release progress records.
+- Local verification passed: 97 tests passed, five browser-only tests skipped; compileall, whitespace, CLI version, and example validation succeeded.
+- **Next:** push the committed version bump only to `arena/fd20cbb9-clicks` and wait for its own full CI before publishing v1.0.1.
+
+### Activity update — v1.0.1 version commit created
+- Created the 1.0.1 metadata/docs/changelog commit on `arena/fd20cbb9-clicks`; amended once to include this commit-result entry. The final hash is available from `git rev-parse HEAD`.
+- **Next:** push only this branch, monitor the new Actions run, and dispatch v1.0.1 only after Windows GUI, package, and all other required checks pass.

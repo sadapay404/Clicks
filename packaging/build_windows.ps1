@@ -8,7 +8,7 @@
 
 param(
     [string]$Python = "python",
-    [string]$Version = "1.0.0",
+    [string]$Version = "1.0.1",
     [switch]$SkipTests,
     [switch]$BundleBrowser
 )

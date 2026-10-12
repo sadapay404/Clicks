@@ -19,12 +19,12 @@ VSVersionInfo(
           '040904B0',
           [StringStruct('CompanyName', 'sadapay404'),
            StringStruct('FileDescription', 'Clicks-Auto - web automation recorder and playback engine'),
-           StringStruct('FileVersion', '1.0.0.0'),
+           StringStruct('FileVersion', '1.0.1.0'),
            StringStruct('InternalName', 'clicks-auto'),
            StringStruct('LegalCopyright', 'MIT licensed'),
            StringStruct('OriginalFilename', 'Clicks-Auto.exe'),
            StringStruct('ProductName', 'Clicks-Auto'),
-           StringStruct('ProductVersion', '1.0.0.0')])
+           StringStruct('ProductVersion', '1.0.1.0')])
       ]),
     VarFileInfo([VarStruct('Translation', [1033, 1200])])
   ]

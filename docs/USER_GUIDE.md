@@ -11,7 +11,7 @@ A slower, friendlier walkthrough than the README.
    *More info → Run anyway*, or verify the SHA256 checksum first:
 
    ```powershell
-   certutil -hashfile Clicks-Auto-1.0.0-win64.zip SHA256
+   certutil -hashfile Clicks-Auto-1.0.1-win64.zip SHA256
    ```
 
 3. The welcome dialog explains the three steps: record → fine tune → run.

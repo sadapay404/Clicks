@@ -19,7 +19,7 @@ from PyInstaller.utils.hooks import collect_submodules
 
 ROOT = Path(SPECPATH).parent
 PACKAGE = ROOT / "clicks_auto"
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 
 block_cipher = None
 
